@@ -1,74 +1,76 @@
-// ── VOICE ENGINE — ElevenLabs + Browser TTS fallback ──────────
+// ── VOICE ENGINE — Daniel (UK Male) with ElevenLabs fallback ──
 
-const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam — professional male
-const ELEVENLABS_MODEL    = 'eleven_turbo_v2';
+let _voices = [];
+let _voicesLoaded = false;
 
-// Get API key from env (set in Vite env vars)
-const EL_KEY = import.meta.env.VITE_ELEVENLABS_KEY || '';
+// Pre-load voices — they load async on first call
+function loadVoices() {
+  return new Promise(resolve => {
+    const voices = window.speechSynthesis?.getVoices() || [];
+    if (voices.length > 0) { _voices = voices; _voicesLoaded = true; resolve(voices); return; }
+    // Wait for voiceschanged event
+    window.speechSynthesis?.addEventListener('voiceschanged', () => {
+      _voices = window.speechSynthesis.getVoices();
+      _voicesLoaded = true;
+      resolve(_voices);
+    }, { once: true });
+    // Fallback timeout
+    setTimeout(() => { _voices = window.speechSynthesis?.getVoices() || []; resolve(_voices); }, 1000);
+  });
+}
 
-let speaking = false;
-let audioContext = null;
+function getBestVoice() {
+  const v = _voices;
+  return (
+    v.find(x => x.name === 'Daniel')                                    // macOS Daniel UK
+    || v.find(x => x.name.includes('Daniel'))                           // any Daniel
+    || v.find(x => x.name.includes('Google UK English Male'))           // Chrome UK male
+    || v.find(x => x.name.includes('Google') && x.lang === 'en-GB')    // Chrome UK
+    || v.find(x => x.lang === 'en-GB' && !x.name.toLowerCase().includes('female'))
+    || v.find(x => x.name.includes('Google') && x.lang.startsWith('en'))
+    || v.find(x => x.lang.startsWith('en'))
+    || v[0]
+  );
+}
+
+let currentUtterance = null;
 
 export function stopSpeaking() {
-  speaking = false;
   window.speechSynthesis?.cancel();
-  if (audioContext) { audioContext.close(); audioContext = null; }
-}
-
-async function speakElevenLabs(text) {
-  if (!EL_KEY) return false;
-  try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': EL_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'audio/mpeg',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: ELEVENLABS_MODEL,
-          voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
-        }),
-      }
-    );
-    if (!res.ok) return false;
-    const buf = await res.arrayBuffer();
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const decoded = await audioContext.decodeAudioData(buf);
-    const source = audioContext.createBufferSource();
-    source.buffer = decoded;
-    source.connect(audioContext.destination);
-    source.start(0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function speakBrowser(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.88; u.pitch = 1.0; u.volume = 1.0;
-  // Find best available voice
-  const voices = window.speechSynthesis.getVoices();
-  const best = voices.find(v => v.name.includes('Daniel'))       // UK male
-    || voices.find(v => v.name.includes('Google UK'))
-    || voices.find(v => v.name.includes('Google') && v.lang === 'en-GB')
-    || voices.find(v => v.name.includes('Google') && v.lang.startsWith('en'))
-    || voices.find(v => v.lang.startsWith('en') && !v.name.includes('Female'));
-  if (best) u.voice = best;
-  window.speechSynthesis.speak(u);
+  currentUtterance = null;
 }
 
 export async function speak(text) {
-  if (!text) return;
+  if (!text || !window.speechSynthesis) return;
   stopSpeaking();
-  speaking = true;
-  const clean = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#+\s/g, '').trim();
-  const used = await speakElevenLabs(clean);
-  if (!used && speaking) speakBrowser(clean);
+
+  // Clean text
+  const clean = text
+    .replace(/\*\*/g, '').replace(/\*/g, '')
+    .replace(/#+\s/g, '').replace(/①|②|③|④|⑤|⑥|⑦/g, '')
+    .replace(/\n+/g, '. ').trim();
+
+  // Ensure voices loaded
+  if (!_voicesLoaded) await loadVoices();
+
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate   = 0.88;
+  u.pitch  = 0.95;
+  u.volume = 1.0;
+
+  const voice = getBestVoice();
+  if (voice) u.voice = voice;
+
+  currentUtterance = u;
+  window.speechSynthesis.speak(u);
+
+  return new Promise(resolve => {
+    u.onend   = () => { currentUtterance = null; resolve(); };
+    u.onerror = () => { currentUtterance = null; resolve(); };
+  });
+}
+
+// Pre-load on module init
+if (typeof window !== 'undefined') {
+  loadVoices();
 }

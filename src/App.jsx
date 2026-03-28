@@ -119,9 +119,13 @@ function StockChat({ symbol, snap, scores, onClose }) {
   useEffect(() => {
     setLoading(true);
     generateStockBrief({ symbol, scoreData, snap, onChunk: (s) => setSections(s) })
-      .then(({ sections: s }) => {
+      .then(({ sections: s, text }) => {
         setSections(s);
         setLoading(false);
+        // Auto-speak the bottom line when brief loads
+        if (s?.['BOTTOM LINE']) {
+          speak('Here is the bottom line on ' + symbol + '. ' + s['BOTTOM LINE']);
+        }
       })
       .catch(() => setLoading(false));
   }, [symbol]);

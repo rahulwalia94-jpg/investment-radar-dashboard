@@ -2,7 +2,7 @@
 // Generates a full analyst brief for any stock
 // Layman-friendly. 7 levels of why.
 
-const API_URL = 'https://api.anthropic.com/v1/messages';
+const API_URL = (import.meta.env.VITE_API_URL || 'https://investment-radar-backend.onrender.com') + '/api/ask';
 
 export async function generateStockBrief({ symbol, scoreData, snap, onChunk }) {
   const regime  = snap?.regime || 'SIDEWAYS';
@@ -76,15 +76,11 @@ Context data: ${context}`;
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify({ prompt, system: `You are a world-class investment analyst explaining ${symbol} to someone who knows NOTHING about investing.`, max_tokens: 1000 }),
   });
 
   const data = await res.json();
-  const text = data.content?.[0]?.text || '';
+  const text = data.text || data.content?.[0]?.text || '';
 
   // Parse sections
   const sections = parseSections(text);

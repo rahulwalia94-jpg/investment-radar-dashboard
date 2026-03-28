@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;900&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
@@ -5,14 +7,33 @@ html, body, #root {
   background: #050810;
   color: #e8f0fe;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-family: 'JetBrains Mono', monospace;
+  overflow-x: hidden;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
 
-::-webkit-scrollbar { width: 3px; }
-::-webkit-scrollbar-track { background: #050810; }
-::-webkit-scrollbar-thumb { background: #141c2e; border-radius: 3px; }
+::-webkit-scrollbar { width: 2px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,255,170,0.2); border-radius: 2px; }
 
-button { -webkit-appearance: none; }
-input { -webkit-appearance: none; }
+@keyframes pulse {
+  0%   { transform: scale(1);   opacity: 1; }
+  70%  { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(1);   opacity: 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+* { animation-fill-mode: both; }
+
+button { -webkit-appearance: none; font-family: 'JetBrains Mono', monospace; }
+input  { font-family: 'JetBrains Mono', monospace; }

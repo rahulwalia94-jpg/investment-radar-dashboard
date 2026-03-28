@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import React from 'react';
 import './App.css';
 import { IntroAnimation } from './intro.jsx';
+import { speak, stopSpeaking } from './voice.js';
+import { generateStockBrief, buildSpokenBrief } from './stockbrief.js';
 import { RegimeWorld, RegimeSelector } from './regimeworld.jsx';
 import { DominoChains } from './domino.jsx';
 
@@ -45,19 +47,8 @@ function useData() {
   return { data, loading, error, ts, refresh };
 }
 
-// ── TALKING STOCK ─────────────────────────────────────────────
-function speakStock(symbol, text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
-  // Pick a nice voice
-  const voices = window.speechSynthesis.getVoices();
-  const nice = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en'))
-    || voices.find(v => v.lang.startsWith('en'));
-  if (nice) u.voice = nice;
-  window.speechSynthesis.speak(u);
-}
+// speakStock now uses the voice.js engine
+const speakStock = (symbol, text) => speak(text);
 
 // ── SCORE RING ────────────────────────────────────────────────
 function Ring({ score, size = 52 }) {
@@ -112,121 +103,200 @@ function Pill({ children, color, small }) {
 
 // ── PER-STOCK AI CHAT ─────────────────────────────────────────
 function StockChat({ symbol, snap, scores, onClose }) {
-  const [msgs,  setMsgs]  = useState([]);
-  const [input, setInput] = useState('');
-  const [busy,  setBusy]  = useState(false);
+  const [view,     setView]     = useState('brief');   // brief | chat
+  const [sections, setSections] = useState(null);
+  const [loading,  setLoading]  = useState(false);
+  const [msgs,     setMsgs]     = useState([]);
+  const [input,    setInput]    = useState('');
+  const [busy,     setBusy]     = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const bottomRef = useRef(null);
+  const scoreData = scores?.[symbol] || {};
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }); }, [msgs]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
-  // Speak intro when opened
+  // Auto-generate brief on open
   useEffect(() => {
-    const s = scores?.[symbol] || {};
-    const regime = snap?.regime || 'SIDEWAYS';
-    const bR = s.calibration?.base_returns?.[regime];
-    const intro = `${symbol}. ${s.sector || ''}. Score ${s.score || '--'} out of 100. Signal: ${s.signal || 'neutral'}. ${bR !== undefined ? `Expected return ${bR >= 0 ? 'plus' : 'minus'} ${Math.abs(bR)} percent in this ${regime} market. ` : ''}${s.reason?.slice(0,60) || ''}`;
-    speakStock(symbol, intro);
-    setMsgs([{ role:'ai', text: `**${symbol}** — ${s.sector || 'Unknown Sector'}\n\nScore: **${s.score || '--'}/100** · Signal: **${s.signal || 'N/A'}**\n\n${s.reason || 'Ask me anything about this stock.'}\n\n*Tap to ask any question. Unknown answers get parked.*` }]);
-  }, []);
+    setLoading(true);
+    generateStockBrief({ symbol, scoreData, snap, onChunk: (s) => setSections(s) })
+      .then(({ sections: s }) => {
+        setSections(s);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [symbol]);
 
-  const send = async (q_) => {
-    const q = q_ || input.trim();
+  const handleSpeak = () => {
+    if (speaking) { stopSpeaking(); setSpeaking(false); return; }
+    if (!sections) return;
+    const text = buildSpokenBrief(symbol, sections);
+    setSpeaking(true);
+    speak(text).then(() => setSpeaking(false));
+  };
+
+  const sendChat = async () => {
+    const q = input.trim();
     if (!q || busy) return;
     setInput('');
-    setMsgs(m => [...m, { role:'user', text:q }]);
+    setMsgs(m => [...m, { role: 'user', text: q }]);
     setBusy(true);
     try {
-      const s = scores?.[symbol] || {};
       const regime = snap?.regime || 'SIDEWAYS';
-      const isUS = ['NET','CEG','GLNG','NVDA','MSFT','AAPL'].includes(symbol);
-      const price = isUS ? snap?.usPrices?.[symbol] : s.last_price;
-      const avgs = { NET:208.62, CEG:310.43, GLNG:50.93 };
-      const pct = avgs[symbol] && price ? ((price-avgs[symbol])/avgs[symbol]*100).toFixed(1) : null;
-
-      const ctx = `Stock: ${symbol} | Sector: ${s.sector||'?'} | Score: ${s.score||'?'}/100 | Signal: ${s.signal||'?'} | Regime: ${regime} | Price: ${isUS?'$':'₹'}${price||'?'} ${pct?`(${pct}% vs avg)`:''}  | Expected return: ${s.calibration?.base_returns?.[regime]??'?'}% | Volatility: ${s.calibration?.sigma?.[regime]?`${(s.calibration.sigma[regime]*100).toFixed(0)}%`:'?'} | Source: ${s.calibration?.source||'?'} | Reason: ${s.reason||'?'} | FII: ${snap?.fii?.fii_net?`${Math.round(snap.fii.fii_net)}Cr`:'?'} | VIX: ${snap?.indices?.['INDIA VIX']?.last?.toFixed(1)||'?'}`;
+      const cal    = scoreData?.calibration || {};
+      const isUS   = ['NET','CEG','GLNG','NVDA','MSFT'].includes(symbol);
+      const price  = isUS ? snap?.usPrices?.[symbol] : scoreData?.last_price;
+      const ctx    = `${symbol} | Score: ${scoreData?.score}/100 | Signal: ${scoreData?.signal} | Regime: ${regime} | Price: ${price} | Expected: ${cal.base_returns?.[regime]}% | Reason: ${scoreData?.reason}`;
 
       const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          model:'claude-sonnet-4-20250514', max_tokens:800,
-          system:`You are a dimensional investment intelligence for ${symbol}. Answer DIRECTLY with numbers. 3-4 sentences max. No disclaimers. If genuinely unknown say "PARKING THIS: [question]" exactly.`,
-          messages:[{ role:'user', content:`Context: ${ctx}\n\nQuestion: ${q}` }],
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 600,
+          system: `You are an expert analyst for ${symbol}. Answer DIRECTLY in 2-3 sentences with specific numbers. Plain English. No disclaimers. If unknown say "PARKING THIS: [question]".`,
+          messages: [{ role: 'user', content: `Context: ${ctx}\n\nQuestion: ${q}` }],
         }),
       });
       const d = await res.json();
       const answer = d.content?.[0]?.text || 'No response.';
       if (answer.includes('PARKING THIS:')) {
-        PARKED.questions.push({ symbol, question:q, ts:new Date().toISOString() });
+        PARKED.questions.push({ symbol, question: q, ts: new Date().toISOString() });
       }
-      setMsgs(m => [...m, { role:'ai', text:answer }]);
-      // Speak the answer
-      speakStock(symbol, answer.replace(/PARKING THIS:/g,'').replace(/\*\*/g,'').slice(0,150));
+      setMsgs(m => [...m, { role: 'ai', text: answer }]);
+      speak(answer.replace('PARKING THIS:', '').slice(0, 200));
     } catch(e) {
-      setMsgs(m => [...m, { role:'ai', text:`Error: ${e.message}` }]);
+      setMsgs(m => [...m, { role: 'ai', text: `Error: ${e.message}` }]);
     } finally { setBusy(false); }
   };
 
-  const sugg = ['Should I buy or sell?','What is the win probability?','Main risk factors?','Price target 3 months?','Why this score?'];
+  const LEVEL_ICONS = {
+    'WHAT IS THIS':          { icon: '①', color: '#00b4ff' },
+    'WHY THIS SCORE TODAY':  { icon: '②', color: '#00ffcc' },
+    'REGIME IMPACT':         { icon: '③', color: '#ffcc00' },
+    'MACRO FORCES AT WORK':  { icon: '④', color: '#ff8c00' },
+    'THE REAL RISK':         { icon: '⑤', color: '#ff2244' },
+    'WIN PROBABILITY':       { icon: '⑥', color: '#7b2fff' },
+    'BOTTOM LINE':           { icon: '⑦', color: '#00ffcc' },
+  };
 
   return (
-    <div style={{ marginTop:12, borderTop:'1px solid rgba(100,150,255,0.1)', paddingTop:12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-        <Label color="#7b2fff">ASK ABOUT {symbol}</Label>
-        <button onClick={() => { window.speechSynthesis?.cancel(); onClose(); }}
-          style={{ background:'none', border:'none', color:'#3a5070', fontSize:16, cursor:'pointer' }}>×</button>
+    <div style={{ marginTop: 12, borderTop: '1px solid rgba(100,150,255,0.1)', paddingTop: 12 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setView('brief')} style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 8, border: 'none',
+            background: view === 'brief' ? 'rgba(0,180,255,0.2)' : 'transparent',
+            color: view === 'brief' ? '#00b4ff' : '#3a5070',
+            fontFamily: 'Orbitron, monospace', letterSpacing: 1, cursor: 'pointer',
+          }}>BRIEF</button>
+          <button onClick={() => setView('chat')} style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 8, border: 'none',
+            background: view === 'chat' ? 'rgba(123,47,255,0.2)' : 'transparent',
+            color: view === 'chat' ? '#7b2fff' : '#3a5070',
+            fontFamily: 'Orbitron, monospace', letterSpacing: 1, cursor: 'pointer',
+          }}>ASK</button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {sections && (
+            <button onClick={handleSpeak} style={{
+              padding: '4px 10px', borderRadius: 6, fontSize: 8, border: 'none',
+              background: speaking ? 'rgba(0,255,204,0.15)' : 'rgba(0,255,204,0.06)',
+              color: speaking ? '#00ffcc' : '#3a5070',
+              fontFamily: 'Orbitron, monospace', letterSpacing: 1, cursor: 'pointer',
+            }}>{speaking ? '■ STOP' : '▶ SPEAK'}</button>
+          )}
+          <button onClick={() => { stopSpeaking(); onClose(); }} style={{
+            background: 'none', border: 'none', color: '#3a5070', fontSize: 16, cursor: 'pointer',
+          }}>×</button>
+        </div>
       </div>
 
-      <div style={{ maxHeight:220, overflowY:'auto', display:'flex', flexDirection:'column', gap:8, marginBottom:10 }}>
-        {msgs.map((m,i) => (
-          <div key={i} style={{
-            alignSelf: m.role==='user'?'flex-end':'flex-start', maxWidth:'90%',
-            padding:'8px 12px',
-            borderRadius: m.role==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',
-            background: m.role==='user'?'rgba(123,47,255,0.2)':'rgba(0,180,255,0.08)',
-            border:`1px solid ${m.role==='user'?'rgba(123,47,255,0.35)':'rgba(0,180,255,0.15)'}`,
-            fontSize:10, lineHeight:1.7, whiteSpace:'pre-wrap',
-            color: m.role==='user'?'#c4a8ff':'#90b8d0',
-            fontFamily: m.role==='user'?'Space Grotesk':'JetBrains Mono, monospace',
-            animation:'slide-up 0.2s ease',
-          }}>
-            {m.text.includes('PARKING THIS')
-              ? <><span style={{ color:'#ffcc00', fontWeight:700 }}>📌 PARKED: </span>{m.text.replace('PARKING THIS:','').trim()}</>
-              : m.text.replace(/\*\*(.*?)\*\*/g, '$1')}
-          </div>
-        ))}
-        {busy && <div style={{ alignSelf:'flex-start', padding:'8px 12px', fontSize:10,
-          color:'#3a5070', fontFamily:'JetBrains Mono, monospace',
-          background:'rgba(0,180,255,0.06)', borderRadius:'14px 14px 14px 4px',
-          border:'1px solid rgba(0,180,255,0.12)', animation:'slide-up 0.2s ease' }}>
-          traversing dimensions...
-        </div>}
-        <div ref={bottomRef}/>
-      </div>
-
-      {msgs.length <= 1 && (
-        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:8 }}>
-          {sugg.map(s => (
-            <button key={s} onClick={() => send(s)} style={{ padding:'3px 8px', borderRadius:8,
-              border:'1px solid rgba(123,47,255,0.2)', background:'rgba(123,47,255,0.05)',
-              color:'#3a5070', fontSize:8, fontFamily:'Space Grotesk' }}>{s}</button>
-          ))}
+      {/* BRIEF VIEW — 7 levels */}
+      {view === 'brief' && (
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: 20 }}>
+              <div style={{ fontSize: 9, color: '#3a5070', fontFamily: 'JetBrains Mono, monospace',
+                letterSpacing: 3, animation: 'pulse-ring 1.5s ease infinite' }}>
+                GENERATING ANALYSIS...
+              </div>
+            </div>
+          )}
+          {sections && Object.entries(LEVEL_ICONS).map(([heading, { icon, color }]) => {
+            const content = sections[heading];
+            if (!content) return null;
+            const isBottom = heading === 'BOTTOM LINE';
+            return (
+              <div key={heading} style={{
+                marginBottom: 10, padding: '10px 12px', borderRadius: 10,
+                background: isBottom ? `${color}10` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${isBottom ? `${color}33` : 'rgba(255,255,255,0.05)'}`,
+                animation: 'slide-up 0.3s ease both',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                  <span style={{ fontSize: 14, color }}>{icon}</span>
+                  <span style={{ fontSize: 7, fontFamily: 'Orbitron, monospace',
+                    letterSpacing: 2, color: `${color}88` }}>{heading}</span>
+                </div>
+                <div style={{ fontSize: isBottom ? 11 : 10,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  color: isBottom ? color : '#7090a8',
+                  lineHeight: 1.7, fontWeight: isBottom ? 700 : 400 }}>
+                  {content}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div style={{ display:'flex', gap:6 }}>
-        <input value={input} onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&send()}
-          placeholder={`Ask anything about ${symbol}...`}
-          style={{ flex:1, padding:'8px 12px', borderRadius:10, outline:'none',
-            border:'1px solid rgba(123,47,255,0.2)', background:'rgba(123,47,255,0.06)',
-            color:'#d0e8ff', fontSize:10, fontFamily:'JetBrains Mono, monospace' }}/>
-        <button onClick={()=>send()} disabled={busy||!input.trim()} style={{
-          padding:'8px 14px', borderRadius:10, border:'none', fontSize:12,
-          background: busy||!input.trim()?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#7b2fff,#00b4ff)',
-          color: busy||!input.trim()?'#3a5070':'#fff', fontWeight:700,
-          boxShadow: busy||!input.trim()?'none':'0 0 20px rgba(123,47,255,0.4)',
-          transition:'all 0.2s' }}>→</button>
-      </div>
+      {/* CHAT VIEW */}
+      {view === 'chat' && (
+        <div>
+          <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex',
+            flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+            {msgs.length === 0 && (
+              <div style={{ fontSize: 9, color: '#3a5070', fontFamily: 'JetBrains Mono, monospace',
+                lineHeight: 1.6 }}>
+                Ask anything about {symbol}. Unanswered questions get parked for debate.
+              </div>
+            )}
+            {msgs.map((m, i) => (
+              <div key={i} style={{
+                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '90%',
+                padding: '8px 12px', fontSize: 10, lineHeight: 1.7,
+                borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                background: m.role === 'user' ? 'rgba(123,47,255,0.2)' : 'rgba(0,180,255,0.08)',
+                border: `1px solid ${m.role === 'user' ? 'rgba(123,47,255,0.3)' : 'rgba(0,180,255,0.15)'}`,
+                color: m.role === 'user' ? '#c4a8ff' : '#90b8d0',
+                fontFamily: 'JetBrains Mono, monospace', animation: 'slide-up 0.2s ease',
+              }}>
+                {m.text.includes('PARKING THIS')
+                  ? <><span style={{ color: '#ffcc00', fontWeight: 700 }}>📌 PARKED: </span>{m.text.replace('PARKING THIS:', '').trim()}</>
+                  : m.text}
+              </div>
+            ))}
+            {busy && <div style={{ alignSelf: 'flex-start', padding: '8px 12px',
+              background: 'rgba(0,180,255,0.06)', borderRadius: '14px 14px 14px 4px',
+              fontSize: 10, color: '#3a5070', fontFamily: 'JetBrains Mono, monospace',
+              border: '1px solid rgba(0,180,255,0.1)' }}>thinking...</div>}
+            <div ref={bottomRef}/>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChat()}
+              placeholder={`Ask about ${symbol}...`}
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 10, outline: 'none',
+                border: '1px solid rgba(123,47,255,0.2)', background: 'rgba(123,47,255,0.06)',
+                color: '#d0e8ff', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}/>
+            <button onClick={sendChat} disabled={busy || !input.trim()} style={{
+              padding: '8px 14px', borderRadius: 10, border: 'none', fontSize: 12,
+              background: busy || !input.trim() ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#7b2fff,#00b4ff)',
+              color: busy || !input.trim() ? '#3a5070' : '#fff', fontWeight: 700,
+              transition: 'all 0.2s' }}>→</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

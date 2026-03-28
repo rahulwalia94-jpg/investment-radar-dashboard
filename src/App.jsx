@@ -955,9 +955,7 @@ export default function App() {
     sessionStorage.setItem('intro-seen', '1');
   };
 
-  if (showIntro) {
-    return <IntroAnimation regime={data?.snap?.regime || 'BEAR'} onComplete={handleIntroComplete}/>;
-  }
+  // Render intro as overlay — not as early return — so dashboard is ready underneath
 
   if (loading && !data) {
     return (
@@ -983,6 +981,14 @@ export default function App() {
       maxWidth:480, margin:'0 auto', position:'relative',
       animation:'world-explode-in 0.8s cubic-bezier(0.2,0,0,1) forwards',
       backgroundImage:`radial-gradient(ellipse at 50% 0%, ${dm.color}08 0%, transparent 60%)` }}>
+
+      {/* ── INTRO OVERLAY ── */}
+      {showIntro && (
+        <IntroAnimation
+          regime={data?.snap?.regime || 'BEAR'}
+          snap={data?.snap || {}}
+          onComplete={handleIntroComplete}/>
+      )}
 
       {/* ── REGIME WORLD BACKGROUND ── */}
       <div style={{ position:'fixed', inset:0, zIndex:0, opacity:0.35,

@@ -1,6 +1,6 @@
 // ── DOMINO CHAIN VISUALIZATION ─────────────────────────────────
 
-import React from 'react';
+import React, { useState } from 'react';
 
 export function DominoChains({ chains, scores }) {
   if (!chains || chains.length === 0) return null;

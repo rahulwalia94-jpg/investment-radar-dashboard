@@ -1,3 +1,5 @@
+import React, { useState, useEffect } from 'react';
+
 // ── REGIME WORLD — Animated Scene per Market Dimension ────────
 
 function AshParticle({ x, delay, size }) {

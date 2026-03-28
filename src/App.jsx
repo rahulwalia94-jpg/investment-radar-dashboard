@@ -941,35 +941,46 @@ function Nav({ tab, setTab }) {
 // ── MAIN APP ──────────────────────────────────────────────────
 export default function App() {
   const [tab,        setTab]        = useState('dashboard');
-  const [showIntro,  setShowIntro]  = useState(true);
   const { data, loading, error, ts, refresh } = useData();
 
-  // Show intro only once per session
+  // Intro: show once per session, but ONLY after data has loaded
+  const [introState, setIntroState] = useState('waiting'); // waiting | showing | done
+
   useEffect(() => {
-    const seen = sessionStorage.getItem('intro-seen');
-    if (seen) setShowIntro(false);
-  }, []);
+    // Once data arrives, decide whether to show intro
+    if (!loading && introState === 'waiting') {
+      const seen = sessionStorage.getItem('intro-seen-v2');
+      if (seen) {
+        setIntroState('done');
+      } else {
+        setIntroState('showing');
+      }
+    }
+  }, [loading, data]);
 
   const handleIntroComplete = () => {
-    setShowIntro(false);
-    sessionStorage.setItem('intro-seen', '1');
+    sessionStorage.setItem('intro-seen-v2', '1');
+    setIntroState('done');
   };
 
-  // Render intro as overlay — not as early return — so dashboard is ready underneath
-
+  // While waiting for data — show a minimal silent loader
   if (loading && !data) {
     return (
       <div style={{ minHeight:'100vh', background:'#01030a', display:'flex',
-        flexDirection:'column', alignItems:'center', justifyContent:'center', gap:20 }}>
-        <div style={{ position:'relative', width:60, height:60 }}>
-          {[0,1,2].map(i => (
-            <div key={i} style={{ position:'absolute', inset:i*10, borderRadius:'50%',
-              border:`1px solid rgba(0,255,204,${0.6-i*0.2})`,
-              animation:`pulse-ring 1.5s ease-out infinite`, animationDelay:`${i*0.3}s` }}/>
-          ))}
-        </div>
-        <div style={{ fontSize:10, fontFamily:'Orbitron, monospace', color:'#00ffcc', letterSpacing:4 }}>LOADING</div>
+        alignItems:'center', justifyContent:'center' }}>
+        <div style={{ width:6, height:6, borderRadius:'50%', background:'#00ffcc',
+          boxShadow:'0 0 15px #00ffcc', animation:'pulse-ring 1.5s ease infinite' }}/>
       </div>
+    );
+  }
+
+  // Show intro as full-screen takeover (data is ready underneath)
+  if (introState === 'showing') {
+    return (
+      <IntroAnimation
+        regime={data?.snap?.regime || 'BEAR'}
+        snap={data?.snap || {}}
+        onComplete={handleIntroComplete}/>
     );
   }
 
@@ -981,14 +992,6 @@ export default function App() {
       maxWidth:480, margin:'0 auto', position:'relative',
       animation:'world-explode-in 0.8s cubic-bezier(0.2,0,0,1) forwards',
       backgroundImage:`radial-gradient(ellipse at 50% 0%, ${dm.color}08 0%, transparent 60%)` }}>
-
-      {/* ── INTRO OVERLAY ── */}
-      {showIntro && (
-        <IntroAnimation
-          regime={data?.snap?.regime || 'BEAR'}
-          snap={data?.snap || {}}
-          onComplete={handleIntroComplete}/>
-      )}
 
       {/* ── REGIME WORLD BACKGROUND ── */}
       <div style={{ position:'fixed', inset:0, zIndex:0, opacity:0.35,

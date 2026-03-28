@@ -11,8 +11,7 @@ function AshParticle({ x, delay, size }) {
 
 function BearWorld() {
   return (
-    <div style={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden',
-      borderRadius: 20, border: '1px solid rgba(255,34,68,0.2)' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       {/* Sky */}
       <div style={{ position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, #1a0008 0%, #2d0010 40%, #0a0003 100%)' }}/>
@@ -22,7 +21,7 @@ function BearWorld() {
         background: 'radial-gradient(circle, #ff224466, #ff224411)',
         boxShadow: '0 0 30px #ff224433' }}/>
       {/* Cracked ground */}
-      <svg style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }} width="100%" height="60" viewBox="0 0 400 60" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }} width="100%" height="60" viewBox="0 0 400 60" preserveAspectRatio="xMidYMax meet">
         <polygon points="0,60 0,30 40,25 80,35 120,20 160,30 200,15 240,28 280,22 320,32 360,18 400,28 400,60" fill="#1a0005"/>
         {/* Cracks */}
         <path d="M 80,30 L 90,50 L 85,60" stroke="#ff224444" strokeWidth="1" fill="none"/>
@@ -30,7 +29,7 @@ function BearWorld() {
         <path d="M 300,25 L 308,50" stroke="#ff224444" strokeWidth="1" fill="none"/>
       </svg>
       {/* Ruined buildings */}
-      <svg style={{ position: 'absolute', bottom: 30 }} width="100%" height="100" viewBox="0 0 400 100" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 30 }} width="100%" height="100" viewBox="0 0 400 100" preserveAspectRatio="xMidYMax meet">
         {/* Crumbling skyscrapers */}
         <rect x="30" y="20" width="25" height="80" fill="#1a0008" stroke="#ff224422" strokeWidth="1"/>
         <polygon points="30,20 55,20 50,10 35,8" fill="#1a0008"/> {/* broken top */}
@@ -76,8 +75,7 @@ function BearWorld() {
 
 function SoftBearWorld() {
   return (
-    <div style={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden',
-      borderRadius: 20, border: '1px solid rgba(255,140,0,0.2)' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, #1a0e00 0%, #2d1800 40%, #0a0800 100%)' }}/>
       {/* Overcast sun */}
@@ -92,7 +90,7 @@ function SoftBearWorld() {
         <ellipse cx="320" cy="28" rx="55" ry="16" fill="#1a1000" opacity="0.8"/>
       </svg>
       {/* City — partially lit */}
-      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="110" viewBox="0 0 400 110" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="110" viewBox="0 0 400 110" preserveAspectRatio="xMidYMax meet">
         <rect x="20" y="40" width="22" height="70" fill="#1a1000" stroke="#ff8c0022" strokeWidth="1"/>
         <rect x="70" y="20" width="30" height="90" fill="#1a1100" stroke="#ff8c0022" strokeWidth="1"/>
         <rect x="70" y="20" width="30" height="5" fill="#ff8c0033"/>
@@ -115,8 +113,7 @@ function SoftBearWorld() {
 
 function SidewaysWorld() {
   return (
-    <div style={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden',
-      borderRadius: 20, border: '1px solid rgba(255,204,0,0.15)' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, #0a0e1a 0%, #0d1220 60%, #050810 100%)' }}/>
       {/* Normal moon/sun */}
@@ -125,7 +122,7 @@ function SidewaysWorld() {
         background: 'radial-gradient(circle, #ffcc0055, transparent)',
         boxShadow: '0 0 20px #ffcc0022' }}/>
       {/* Normal city */}
-      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="xMidYMax meet">
         <rect x="15" y="60" width="20" height="60" fill="#0d1428" stroke="#ffcc0015" strokeWidth="1"/>
         <rect x="55" y="30" width="28" height="90" fill="#0a1020" stroke="#ffcc0018" strokeWidth="1"/>
         <rect x="130" y="15" width="35" height="105" fill="#0d1428" stroke="#ffcc0015" strokeWidth="1"/>
@@ -152,8 +149,7 @@ function SidewaysWorld() {
 
 function SoftBullWorld() {
   return (
-    <div style={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden',
-      borderRadius: 20, border: '1px solid rgba(0,180,255,0.2)' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, #001a2a 0%, #002035 60%, #001020 100%)' }}/>
       {/* Rising sun */}
@@ -168,7 +164,7 @@ function SoftBullWorld() {
         ))}
       </svg>
       {/* Growing city with cranes */}
-      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="xMidYMax meet">
         {/* Buildings under construction */}
         <rect x="20" y="50" width="22" height="80" fill="#001828" stroke="#00b4ff25" strokeWidth="1"/>
         <rect x="65" y="25" width="30" height="105" fill="#001525" stroke="#00b4ff25" strokeWidth="1"/>
@@ -206,8 +202,7 @@ function BullWorld() {
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden',
-      borderRadius: 20, border: '1px solid rgba(0,255,204,0.25)' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       {/* Golden sky */}
       <div style={{ position: 'absolute', inset: 0,
         background: 'linear-gradient(180deg, #001a0f 0%, #002a15 40%, #001508 100%)' }}/>
@@ -224,7 +219,7 @@ function BullWorld() {
         background: 'radial-gradient(circle, #00ffcc88, #00ffcc22)',
         boxShadow: '0 0 50px #00ffcc44, 0 0 100px #00ffcc22' }}/>
       {/* Skyscrapers */}
-      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="140" viewBox="0 0 400 140" preserveAspectRatio="none">
+      <svg style={{ position: 'absolute', bottom: 0 }} width="100%" height="140" viewBox="0 0 400 140" preserveAspectRatio="xMidYMax meet">
         <rect x="10" y="70" width="20" height="70" fill="#001a0a" stroke="#00ffcc15" strokeWidth="1"/>
         <rect x="50" y="45" width="28" height="95" fill="#001508" stroke="#00ffcc18" strokeWidth="1"/>
         <polygon points="50,45 78,45 64,30" fill="#001a0a"/>
@@ -274,7 +269,7 @@ function BullWorld() {
   );
 }
 
-export function RegimeWorld({ regime, score, selectable = false, onSelect }) {
+export function RegimeWorld({ regime, preview = false, selectable = false, onSelect }) {
   const worlds = {
     BEAR: BearWorld,
     SOFT_BEAR: SoftBearWorld,
@@ -284,7 +279,12 @@ export function RegimeWorld({ regime, score, selectable = false, onSelect }) {
   };
   const W = worlds[regime] || SidewaysWorld;
   return (
-    <div onClick={onSelect} style={{ cursor: selectable ? 'pointer' : 'default' }}>
+    <div onClick={onSelect} style={{
+      cursor: selectable ? 'pointer' : 'default',
+      height: preview ? 160 : '100vh',
+      overflow: 'hidden',
+      borderRadius: preview ? 16 : 0,
+    }}>
       <W/>
     </div>
   );
@@ -300,7 +300,7 @@ export function RegimeSelector({ current, onSelect }) {
     <div>
       {/* World preview */}
       <div style={{ marginBottom: 12 }}>
-        <RegimeWorld regime={selected} selectable={false}/>
+        <RegimeWorld regime={selected} preview={true} selectable={false}/>
       </div>
       {/* Selector pills */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>

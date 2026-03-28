@@ -956,7 +956,7 @@ export default function App() {
   };
 
   if (showIntro) {
-    return <IntroAnimation onComplete={handleIntroComplete}/>;
+    return <IntroAnimation regime={data?.snap?.regime || 'BEAR'} onComplete={handleIntroComplete}/>;
   }
 
   if (loading && !data) {
@@ -975,10 +975,25 @@ export default function App() {
     );
   }
 
+  const regime = data?.snap?.regime || 'SIDEWAYS';
+  const dm = DIM[regime] || DIM.SIDEWAYS;
+
   return (
     <div style={{ minHeight:'100vh', background:'#01030a', color:'#d0e8ff',
       maxWidth:480, margin:'0 auto', position:'relative',
-      backgroundImage:'radial-gradient(ellipse at 50% 0%, rgba(123,47,255,0.04) 0%, transparent 60%)' }}>
+      animation:'world-explode-in 0.8s cubic-bezier(0.2,0,0,1) forwards',
+      backgroundImage:`radial-gradient(ellipse at 50% 0%, ${dm.color}08 0%, transparent 60%)` }}>
+
+      {/* ── REGIME WORLD BACKGROUND ── */}
+      <div style={{ position:'fixed', inset:0, zIndex:0, opacity:0.35,
+        pointerEvents:'none', maxWidth:480, margin:'0 auto',
+        animation:'world-explode-in 0.9s cubic-bezier(0.2,0,0,1) forwards' }}>
+        <RegimeWorld regime={regime}/>
+      </div>
+
+      {/* Dim overlay so content is readable */}
+      <div style={{ position:'fixed', inset:0, zIndex:1, pointerEvents:'none',
+        background:'linear-gradient(180deg, rgba(1,3,10,0.7) 0%, rgba(1,3,10,0.5) 40%, rgba(1,3,10,0.8) 100%)' }}/>
 
       {/* Header */}
       <div style={{ position:'sticky', top:0, zIndex:100,
@@ -1010,7 +1025,7 @@ export default function App() {
         </button>
       </div>
 
-      <div style={{ overflowY:'auto', paddingBottom:70 }}>
+      <div style={{ overflowY:'auto', paddingBottom:70, position:'relative', zIndex:2 }}>
         {tab==='dashboard'     && <DashboardTab     data={data}/>}
         {tab==='opportunities' && <OpportunitiesTab data={data}/>}
         {tab==='portfolio'     && <PortfolioTab     data={data}/>}

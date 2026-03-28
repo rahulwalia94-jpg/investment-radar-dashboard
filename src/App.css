@@ -2,21 +2,9 @@
 
 :root {
   --void: #01030a;
-  --deep: #050d1a;
-  --surface: #0a1428;
-  --glass: rgba(10,20,40,0.7);
-  --border: rgba(100,180,255,0.1);
   --text: #d0e8ff;
   --muted: #3a5070;
   --dim: #162035;
-
-  /* Regime colors */
-  --bear-primary: #ff2244;
-  --bear-bg: #0a0005;
-  --bull-primary: #00ffcc;
-  --bull-bg: #001a0a;
-  --sideways-primary: #ffcc00;
-  --sideways-bg: #0a0800;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,27 +13,91 @@ html, body, #root { height: 100%; background: var(--void); color: var(--text); f
 ::-webkit-scrollbar { width: 1px; }
 ::-webkit-scrollbar-thumb { background: rgba(100,180,255,0.2); }
 
-/* ── INTRO ANIMATION ──────────────────────────────────────────── */
-@keyframes stars-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes earth-zoom { 0% { transform: scale(0.1) translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: scale(8) translateY(20px); opacity: 0; } }
-@keyframes india-zoom { 0% { transform: scale(0.3); opacity: 0; } 20% { opacity: 1; } 100% { transform: scale(6) translateY(10px); opacity: 0; } }
-@keyframes mumbai-zoom { 0% { transform: scale(0.5); opacity: 0; } 20% { opacity: 1; } 100% { transform: scale(5); opacity: 0; } }
-@keyframes nse-zoom { 0% { transform: scale(0.6) translateY(20px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
-@keyframes dash-reveal { from { opacity: 0; transform: scale(1.05); } to { opacity: 1; transform: scale(1); } }
-@keyframes title-glow { 0%,100% { text-shadow: 0 0 20px currentColor; } 50% { text-shadow: 0 0 60px currentColor, 0 0 100px currentColor; } }
-@keyframes scanline { from { transform: translateY(-100%); } to { transform: translateY(100vh); } }
-@keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }
-@keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
-@keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes glitch { 0%,90%,100% { transform: translate(0,0); clip-path: none; } 92% { transform: translate(-3px, 1px); } 94% { transform: translate(3px,-1px); } 96% { transform: translate(-1px,2px); } }
-@keyframes ash-fall { 0% { transform: translateY(-20px) translateX(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) translateX(30px) rotate(360deg); opacity: 0; } }
-@keyframes crane-move { 0%,100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
-@keyframes shuttle-launch { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-200px) scale(0.3); opacity: 0; } }
-@keyframes city-pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.3); } }
-@keyframes flicker { 0%,95%,100% { opacity: 1; } 96% { opacity: 0.3; } 98% { opacity: 0.8; } }
-@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes thread-pulse { 0%,100% { stroke-opacity: 0.4; } 50% { stroke-opacity: 1; } }
-@keyframes domino-glow { 0%,100% { filter: drop-shadow(0 0 4px currentColor); } 50% { filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 20px currentColor); } }
+/* ── LAUNCH SEQUENCE ─────────────────────────────────────────── */
+@keyframes heartbeat {
+  0%,100% { transform: scale(1);   opacity: 0.6; }
+  14%      { transform: scale(1.15); opacity: 1;   }
+  28%      { transform: scale(1);   opacity: 0.8; }
+  42%      { transform: scale(1.08); opacity: 1;   }
+  70%      { transform: scale(1);   opacity: 0.6; }
+}
+@keyframes get-ready-in {
+  0%   { opacity: 0; transform: scale(0.5) translateY(20px); filter: blur(20px); }
+  100% { opacity: 1; transform: scale(1)   translateY(0);    filter: blur(0);    }
+}
+@keyframes get-ready-out {
+  0%   { opacity: 1; transform: scale(1);    filter: blur(0);    }
+  100% { opacity: 0; transform: scale(3);    filter: blur(30px); }
+}
+@keyframes shockwave {
+  0%   { transform: scale(0); opacity: 1; }
+  100% { transform: scale(8); opacity: 0; }
+}
+@keyframes world-explode-in {
+  0%   { transform: scale(4);   opacity: 0; filter: blur(40px) brightness(3); }
+  40%  { transform: scale(1.05); opacity: 1; filter: blur(2px)  brightness(1.5); }
+  100% { transform: scale(1);   opacity: 1; filter: blur(0)    brightness(1);   }
+}
+@keyframes dashboard-rise {
+  0%   { opacity: 0; transform: translateY(30px); filter: blur(10px); }
+  100% { opacity: 1; transform: translateY(0);    filter: blur(0);    }
+}
+@keyframes flash-white {
+  0%,100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+/* ── REGIME WORLD ANIMATIONS ──────────────────────────────────── */
+@keyframes ash-fall {
+  0%   { transform: translateY(-20px) translateX(0)   rotate(0deg);   opacity: 1; }
+  100% { transform: translateY(200px) translateX(30px) rotate(360deg); opacity: 0; }
+}
+@keyframes crane-move {
+  0%,100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(5deg);  }
+}
+@keyframes shuttle-launch {
+  0%   { transform: translateY(0)    scale(1);   opacity: 1; }
+  100% { transform: translateY(-300px) scale(0.2); opacity: 0; }
+}
+@keyframes city-pulse {
+  0%,100% { filter: brightness(1);   }
+  50%      { filter: brightness(1.4); }
+}
+@keyframes flicker {
+  0%,90%,100% { opacity: 1;   }
+  92%          { opacity: 0.2; }
+  96%          { opacity: 0.8; }
+}
+@keyframes scan-line {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes float-orb {
+  0%,100% { transform: translateY(0px)   rotate(0deg);   }
+  33%      { transform: translateY(-10px) rotate(2deg);   }
+  66%      { transform: translateY(5px)  rotate(-1.5deg); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes thread-pulse {
+  0%,100% { stroke-opacity: 0.3; }
+  50%      { stroke-opacity: 1;   }
+}
+@keyframes domino-glow {
+  0%,100% { filter: drop-shadow(0 0 4px currentColor);  }
+  50%      { filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 24px currentColor); }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
 
 button { font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
 input  { font-family: 'JetBrains Mono', monospace; }

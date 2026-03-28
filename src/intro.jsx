@@ -122,7 +122,7 @@ export function IntroAnimation({ regime = 'BEAR', snap = {}, onComplete }) {
   useEffect(() => {
     if (phase === 'done' && !called.current) {
       called.current = true;
-      requestAnimationFrame(() => requestAnimationFrame(() => onComplete?.()));
+      setTimeout(() => onComplete?.(), 50);
     }
   }, [phase]);
 

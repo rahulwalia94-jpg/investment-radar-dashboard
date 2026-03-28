@@ -1,39 +1,97 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;700&display=swap');
+
+:root {
+  --d1: #00ffcc;
+  --d2: #7b2fff;
+  --d3: #ff2d78;
+  --d4: #00b4ff;
+  --d5: #ffcc00;
+  --void: #03050f;
+  --deep: #07091a;
+  --surface: #0d1128;
+  --glass: rgba(13,17,40,0.6);
+  --border: rgba(123,47,255,0.15);
+  --text: #e0e8ff;
+  --muted: #4a5680;
+  --dim: #1e2545;
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
-  height: 100%;
-  background: #050810;
-  color: #e8f0fe;
+  height: 100%; min-height: 100vh;
+  background: var(--void);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
   -webkit-font-smoothing: antialiased;
-  font-family: 'JetBrains Mono', monospace;
   overflow-x: hidden;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
 
-::-webkit-scrollbar { width: 2px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,255,170,0.2); border-radius: 2px; }
+::-webkit-scrollbar { width: 1px; }
+::-webkit-scrollbar-thumb { background: var(--d2); }
 
-@keyframes pulse {
-  0%   { transform: scale(1);   opacity: 1; }
-  70%  { transform: scale(2.5); opacity: 0; }
-  100% { transform: scale(1);   opacity: 0; }
+/* ── DIMENSIONAL ANIMATIONS ── */
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
 }
-
-@keyframes spin {
+@keyframes drift {
+  0% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-8px) rotate(1deg); }
+  66% { transform: translateY(4px) rotate(-0.5deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+@keyframes flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96% { opacity: 0.4; }
+  97% { opacity: 1; }
+  98% { opacity: 0.2; }
+  99% { opacity: 1; }
+}
+@keyframes glitch {
+  0%, 90%, 100% { transform: translate(0); }
+  92% { transform: translate(-2px, 1px); }
+  94% { transform: translate(2px, -1px); }
+  96% { transform: translate(-1px, 2px); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin-slow {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes number-tick {
+  from { transform: translateY(4px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes warp {
+  0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+}
+@keyframes hyperspace {
+  0% { opacity: 0; transform: scaleX(0) translateX(-50%); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: scaleX(1) translateX(50%); }
 }
 
-* { animation-fill-mode: both; }
+/* Orb background */
+.orb {
+  position: fixed; border-radius: 50%;
+  filter: blur(80px); pointer-events: none; z-index: 0;
+  animation: drift 12s ease-in-out infinite;
+}
 
-button { -webkit-appearance: none; font-family: 'JetBrains Mono', monospace; }
+button { font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
 input  { font-family: 'JetBrains Mono', monospace; }

@@ -1,16 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
 
 const API = import.meta.env.VITE_API_URL || 'https://investment-radar-backend.onrender.com';
 
-// ── CONSTANTS ─────────────────────────────────────────────────
-const REGIME = {
-  BULL:      { label: 'BULL',      color: '#00ffaa', glow: '#00ffaa40', icon: '▲' },
-  SOFT_BULL: { label: 'SOFT BULL', color: '#4fffb0', glow: '#4fffb040', icon: '↗' },
-  SIDEWAYS:  { label: 'SIDEWAYS',  color: '#ffcc00', glow: '#ffcc0040', icon: '→' },
-  SOFT_BEAR: { label: 'SOFT BEAR', color: '#ff6b35', glow: '#ff6b3540', icon: '↘' },
-  BEAR:      { label: 'BEAR',      color: '#ff2244', glow: '#ff224440', icon: '▼' },
+// ── DIMENSION CONSTANTS ───────────────────────────────────────
+const DIM = {
+  BULL:      { label: 'BULL',      color: '#00ffcc', glow: '#00ffcc', dim: '5th — Ascending', icon: '↑' },
+  SOFT_BULL: { label: 'SOFT BULL', color: '#00b4ff', glow: '#00b4ff', dim: '4th — Lifting',   icon: '↗' },
+  SIDEWAYS:  { label: 'SIDEWAYS',  color: '#ffcc00', glow: '#ffcc00', dim: '3rd — Stable',    icon: '→' },
+  SOFT_BEAR: { label: 'SOFT BEAR', color: '#ff8c00', glow: '#ff8c00', dim: '2nd — Falling',   icon: '↘' },
+  BEAR:      { label: 'BEAR',      color: '#ff2d78', glow: '#ff2d78', dim: '1st — Collapse',  icon: '↓' },
 };
+
+// ── PARKED QUESTIONS STORE ────────────────────────────────────
+const PARKED = { questions: [] };
 
 // ── DATA HOOK ─────────────────────────────────────────────────
 function useData() {
@@ -19,140 +22,235 @@ function useData() {
   const [error,   setError]   = useState(null);
   const [ts,      setTs]      = useState(null);
 
-  const fetch_ = useCallback(async (silent = false) => {
+  const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const r = await fetch(`${API}/api/snapshot`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      setData(d); setTs(new Date()); setError(null);
+      setData(await r.json());
+      setTs(new Date());
+      setError(null);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetch_(); const id = setInterval(() => fetch_(true), 5*60*1000); return () => clearInterval(id); }, [fetch_]);
-  return { data, loading, error, ts, refresh: fetch_ };
+  useEffect(() => {
+    refresh();
+    const id = setInterval(() => refresh(true), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  return { data, loading, error, ts, refresh };
 }
 
-// ── ANIMATED NUMBER ───────────────────────────────────────────
-function AnimNum({ value, prefix = '', suffix = '', decimals = 0, color }) {
-  const [display, setDisplay] = useState(0);
+// ── ANIMATED COUNTER ──────────────────────────────────────────
+function Counter({ value, prefix = '', suffix = '', decimals = 0, color, size = 20 }) {
+  const [disp, setDisp] = useState(0);
   const target = parseFloat(value) || 0;
   useEffect(() => {
-    let start = display, frame;
+    let cur = disp, raf;
     const step = () => {
-      start += (target - start) * 0.12;
-      if (Math.abs(target - start) < 0.01) start = target;
-      setDisplay(start);
-      if (start !== target) frame = requestAnimationFrame(step);
+      cur += (target - cur) * 0.15;
+      if (Math.abs(target - cur) < 0.005) cur = target;
+      setDisp(cur);
+      if (cur !== target) raf = requestAnimationFrame(step);
     };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, [target]);
-  const formatted = decimals > 0 ? display.toFixed(decimals) : Math.round(display).toLocaleString('en-IN');
-  return <span style={{ color }}>{prefix}{formatted}{suffix}</span>;
-}
-
-// ── SPARK LINE ────────────────────────────────────────────────
-function SparkLine({ data, color, width = 80, height = 30 }) {
-  if (!data || data.length < 2) return null;
-  const min = Math.min(...data), max = Math.max(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * height;
-    return `${x},${y}`;
-  }).join(' ');
+  const fmt = decimals > 0
+    ? Math.abs(disp).toFixed(decimals)
+    : Math.abs(Math.round(disp)).toLocaleString('en-IN');
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={`sg-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
-          <stop offset="100%" stopColor={color} stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5"
-        strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-// ── SCORE RING ────────────────────────────────────────────────
-function ScoreRing({ score, size = 44 }) {
-  const color = score >= 75 ? '#00ffaa' : score >= 60 ? '#4f8ef7' : score >= 45 ? '#ffcc00' : '#ff2244';
-  const r = (size / 2) - 4;
-  const circ = 2 * Math.PI * r;
-  const dash = (score / 100) * circ;
-  return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#ffffff10" strokeWidth="3"/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="3"
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4,0,0.2,1)', filter: `drop-shadow(0 0 4px ${color})` }}/>
-      <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central"
-        style={{ transform: 'rotate(90deg)', transformOrigin: `${size/2}px ${size/2}px`,
-          fill: color, fontSize: 11, fontWeight: 900, fontFamily: 'monospace' }}>
-        {score}
-      </text>
-    </svg>
-  );
-}
-
-// ── GLASS CARD ────────────────────────────────────────────────
-function Glass({ children, style, onClick, glow }) {
-  return (
-    <div onClick={onClick} style={{
-      background: 'rgba(8,12,24,0.7)',
-      backdropFilter: 'blur(20px)',
-      border: `1px solid ${glow || 'rgba(255,255,255,0.06)'}`,
-      borderRadius: 16,
-      padding: '14px 16px',
-      marginBottom: 10,
-      boxShadow: glow ? `0 0 30px ${glow}` : 'none',
-      transition: 'all 0.3s ease',
-      cursor: onClick ? 'pointer' : 'default',
-      ...style,
-    }}>{children}</div>
-  );
-}
-
-// ── PULSE DOT ─────────────────────────────────────────────────
-function PulseDot({ color }) {
-  return (
-    <span style={{ position: 'relative', display: 'inline-block', width: 8, height: 8 }}>
-      <span style={{ position: 'absolute', inset: 0, borderRadius: '50%',
-        background: color, animation: 'pulse 2s ease-out infinite' }}/>
-      <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: color }}/>
+    <span style={{ color, fontSize: size, fontWeight: 700,
+      fontFamily: 'JetBrains Mono, monospace',
+      textShadow: color ? `0 0 20px ${color}88` : 'none',
+      animation: 'number-tick 0.3s ease' }}>
+      {disp < 0 ? '-' : ''}{prefix}{fmt}{suffix}
     </span>
   );
 }
 
-// ── AI CHAT ───────────────────────────────────────────────────
-function AskAI({ data }) {
-  const [q, setQ]   = useState('');
-  const [ans, setAns] = useState('');
-  const [busy, setBusy] = useState(false);
+// ── DIMENSIONAL ORB ───────────────────────────────────────────
+function DimOrbs({ regime }) {
+  const d = DIM[regime] || DIM.SIDEWAYS;
+  return (
+    <>
+      <div className="orb" style={{ width: 300, height: 300, top: -100, right: -100,
+        background: `radial-gradient(circle, ${d.color}22, transparent 70%)`,
+        animationDuration: '15s' }}/>
+      <div className="orb" style={{ width: 200, height: 200, bottom: '20%', left: -60,
+        background: `radial-gradient(circle, #7b2fff22, transparent 70%)`,
+        animationDuration: '20s', animationDelay: '-7s' }}/>
+      <div className="orb" style={{ width: 150, height: 150, top: '40%', right: '10%',
+        background: `radial-gradient(circle, #00b4ff18, transparent 70%)`,
+        animationDuration: '18s', animationDelay: '-3s' }}/>
+    </>
+  );
+}
 
-  const ask = async () => {
-    if (!q.trim() || busy) return;
+// ── DIMENSIONAL SCORE ─────────────────────────────────────────
+function DimScore({ score, size = 52 }) {
+  const c = score >= 75 ? '#00ffcc' : score >= 60 ? '#00b4ff' : score >= 45 ? '#ffcc00' : '#ff2d78';
+  const r = size / 2 - 5;
+  const circ = 2 * Math.PI * r;
+  const filled = (score / 100) * circ;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ position: 'absolute', transform: 'rotate(-90deg)' }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none"
+          stroke={`${c}18`} strokeWidth="2.5"/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none"
+          stroke={c} strokeWidth="2.5"
+          strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.4,0,0.2,1)',
+            filter: `drop-shadow(0 0 6px ${c})` }}/>
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: size > 44 ? 13 : 11, fontWeight: 900, color: c,
+        fontFamily: 'JetBrains Mono, monospace' }}>
+        {score}
+      </div>
+    </div>
+  );
+}
+
+// ── HYPERSPACE LINE ───────────────────────────────────────────
+function HyperLine({ data, color, width = 100, height = 36, label }) {
+  if (!data || data.length < 2) return (
+    <div style={{ width, height, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', fontSize: 8, color: '#1e2545',
+      fontFamily: 'JetBrains Mono, monospace' }}>NO DATA</div>
+  );
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - 4 - ((v - min) / range) * (height - 8);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastUp = data[data.length - 1] >= data[0];
+  const c = lastUp ? color || '#00ffcc' : '#ff2d78';
+  const id = `grad-${Math.random().toString(36).slice(2,8)}`;
+  return (
+    <svg width={width} height={height} overflow="visible">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={c} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={c} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      {/* Area fill */}
+      <polygon points={`0,${height} ${pts} ${width},${height}`}
+        fill={`url(#${id})`}/>
+      {/* Line */}
+      <polyline points={pts} fill="none" stroke={c} strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round"
+        style={{ filter: `drop-shadow(0 0 4px ${c})` }}/>
+      {/* Last dot */}
+      <circle cx={(data.length-1)/(data.length-1)*width}
+        cy={height-4-((data[data.length-1]-min)/range)*(height-8)}
+        r="3" fill={c} style={{ filter: `drop-shadow(0 0 6px ${c})` }}/>
+    </svg>
+  );
+}
+
+// ── GLASS PANEL ───────────────────────────────────────────────
+function Panel({ children, style, glow, onClick, animate }) {
+  return (
+    <div onClick={onClick} style={{
+      background: 'rgba(13,17,40,0.65)',
+      backdropFilter: 'blur(24px)',
+      border: `1px solid ${glow ? `${glow}30` : 'rgba(123,47,255,0.12)'}`,
+      borderRadius: 20, padding: '16px 18px', marginBottom: 10,
+      boxShadow: glow ? `0 0 40px ${glow}12, inset 0 0 20px ${glow}06` : 'none',
+      transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+      cursor: onClick ? 'pointer' : 'default',
+      animation: animate ? 'slide-up 0.4s ease' : 'none',
+      position: 'relative', overflow: 'hidden',
+      ...style,
+    }}>
+      {glow && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: `linear-gradient(90deg, transparent, ${glow}44, transparent)` }}/>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// ── LABEL ─────────────────────────────────────────────────────
+function Label({ children, color = '#4a5680' }) {
+  return (
+    <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
+      letterSpacing: 3, color, fontWeight: 600, textTransform: 'uppercase',
+      marginBottom: 10 }}>{children}</div>
+  );
+}
+
+// ── PILL ──────────────────────────────────────────────────────
+function Pill({ children, color, small }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center',
+      padding: small ? '2px 7px' : '4px 10px',
+      borderRadius: 20, fontSize: small ? 8 : 9,
+      fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
+      border: `1px solid ${color}33`,
+      background: `${color}12`, color,
+      textShadow: `0 0 10px ${color}66` }}>
+      {children}
+    </span>
+  );
+}
+
+// ── PER-STOCK AI CHAT ─────────────────────────────────────────
+function StockChat({ symbol, data, onClose }) {
+  const [msgs,  setMsgs]  = useState([
+    { role: 'ai', text: `I know everything about ${symbol} in the current ${data?.snap?.regime || 'SIDEWAYS'} regime. Ask me anything — price targets, risks, probability, why this score, what to do. If I don't know, I'll park it.` }
+  ]);
+  const [input, setInput] = useState('');
+  const [busy,  setBusy]  = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [msgs]);
+
+  const send = async (question) => {
+    const q = question || input.trim();
+    if (!q || busy) return;
+    setInput('');
+    setMsgs(m => [...m, { role: 'user', text: q }]);
     setBusy(true);
+
     try {
-      const snap = data?.snap || {};
-      const analysis = data?.analysis || {};
-      const scores = analysis.scores?.scores || {};
-      const top5 = analysis.scores?.top5 || [];
-      const regime = snap.regime || 'SIDEWAYS';
-      const fii = snap.fii?.fii_net || 0;
-      const nifty = snap.indices?.['NIFTY 50']?.last;
+      const snap      = data?.snap     || {};
+      const analysis  = data?.analysis || {};
+      const scores    = analysis.scores?.scores || {};
+      const stockData = scores[symbol] || {};
+      const cal       = stockData.calibration || {};
+      const regime    = snap.regime || 'SIDEWAYS';
+      const bR        = cal.base_returns?.[regime];
+      const sigma     = cal.sigma?.[regime];
+      const isUS      = ['NET','CEG','GLNG','NVDA','MSFT','AAPL'].includes(symbol);
+      const price     = isUS ? snap.usPrices?.[symbol] : stockData.last_price;
+      const avgs      = { NET: 208.62, CEG: 310.43, GLNG: 50.93 };
+      const avgPrice  = avgs[symbol];
+      const plPct     = avgPrice && price ? ((price - avgPrice) / avgPrice * 100).toFixed(1) : null;
 
       const context = `
-Market data: Nifty ${nifty}, Regime ${regime}, FII ${fii > 0 ? '+' : ''}${Math.round(fii)}Cr
-Top picks today: ${top5.join(', ')}
-Portfolio: NET avg $208.62, CEG avg $310.43, GLNG avg $50.93
-Current prices: NET $${snap.usPrices?.NET?.toFixed(2) || 'N/A'}, CEG $${snap.usPrices?.CEG?.toFixed(2) || 'N/A'}, GLNG $${snap.usPrices?.GLNG?.toFixed(2) || 'N/A'}
-VIX: ${snap.indices?.['INDIA VIX']?.last?.toFixed(1) || 'N/A'}
-AI narrative: ${(analysis.regimeNarrative || '').slice(0, 300)}
-Scores sample: ${Object.entries(scores).slice(0, 10).map(([k,v]) => `${k}:${v.score}`).join(', ')}
+Stock: ${symbol} | Sector: ${stockData.sector || 'Unknown'}
+Score: ${stockData.score || '--'}/100 | Signal: ${stockData.signal || '--'}
+Regime: ${regime} (Score ${snap.regime_score || 0}/5)
+Price: ${isUS ? '$' : '₹'}${price || '--'} ${plPct ? `(${plPct}% vs avg)` : ''}
+Expected return in ${regime}: ${bR !== undefined ? `${bR >= 0 ? '+' : ''}${bR}%` : 'unknown'}
+Volatility σ: ${sigma ? `${(sigma*100).toFixed(0)}%/yr` : 'unknown'}
+Calibration: ${cal.source || 'fallback'}
+Score reason: ${stockData.reason || 'Not available'}
+FII flow: ${snap.fii?.fii_net ? `${snap.fii.fii_net >= 0 ? '+' : ''}${Math.round(snap.fii.fii_net)} Cr` : '--'}
+VIX: ${snap.indices?.['INDIA VIX']?.last?.toFixed(1) || '--'}
+Regime narrative: ${(analysis.regimeNarrative || '').slice(0, 200)}
       `.trim();
 
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -161,163 +259,488 @@ Scores sample: ${Object.entries(scores).slice(0, 10).map(([k,v]) => `${k}:${v.sc
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
-          system: `You are an investment analyst assistant for Investment Radar Pro. Answer questions about the Indian and US markets based on the provided market data. Be concise (2-4 sentences max), direct, and specific. Use numbers. No disclaimers.`,
-          messages: [{ role: 'user', content: `Context:\n${context}\n\nQuestion: ${q}` }],
+          system: `You are a hyper-intelligent investment AI for Investment Radar Pro. You have deep knowledge of ${symbol} and current market conditions. Answer questions directly, specifically, with numbers. Be concise (3-5 sentences max). If you genuinely don't know something, say "PARKING THIS: [restate the question]" — do not make up answers. Never add disclaimers or say "consult a financial advisor".`,
+          messages: [
+            { role: 'user', content: `Context about ${symbol}:\n${context}\n\nQuestion: ${q}` }
+          ],
         }),
       });
+
       const d = await res.json();
-      setAns(d.content?.[0]?.text || 'Could not get response');
+      const answer = d.content?.[0]?.text || 'Unable to get response.';
+
+      // Check if parked
+      if (answer.includes('PARKING THIS:')) {
+        const parked = answer.replace('PARKING THIS:', '').trim();
+        PARKED.questions.push({ symbol, question: q, parked, ts: new Date().toISOString() });
+      }
+
+      setMsgs(m => [...m, { role: 'ai', text: answer }]);
     } catch(e) {
-      setAns(`Error: ${e.message}`);
+      setMsgs(m => [...m, { role: 'ai', text: `Error: ${e.message}` }]);
     } finally { setBusy(false); }
   };
 
-  const suggestions = ['What should I do with NET today?', 'Which sector is strongest?', 'Should I add to GLNG?', 'What does BEAR regime mean for my portfolio?'];
+  const suggestions = [
+    'Should I buy, hold or sell?',
+    'What is the win probability?',
+    'Why is the score this high/low?',
+    'What are the main risks?',
+    'What price target in 3 months?',
+  ];
 
   return (
-    <Glass style={{ background: 'rgba(79,142,247,0.06)', border: '1px solid rgba(79,142,247,0.2)' }}>
-      <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace', letterSpacing: 3,
-        color: '#4f8ef7', marginBottom: 10 }}>ASK INVESTMENT RADAR AI</div>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <input value={q} onChange={e => setQ(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && ask()}
-          placeholder="Ask about your portfolio, stocks, regime..."
-          style={{ flex: 1, padding: '9px 12px', borderRadius: 10, outline: 'none',
-            border: '1px solid rgba(79,142,247,0.3)', background: 'rgba(79,142,247,0.08)',
-            color: '#e8f0fe', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}/>
-        <button onClick={ask} disabled={busy || !q.trim()} style={{
-          padding: '9px 14px', borderRadius: 10, border: 'none',
-          background: busy ? '#1a2540' : '#4f8ef7',
-          color: busy ? '#3a4d6e' : '#050810',
-          fontWeight: 900, fontSize: 11, cursor: 'pointer',
-          fontFamily: 'JetBrains Mono, monospace',
-          transition: 'all 0.2s',
-        }}>{busy ? '...' : '→'}</button>
+    <div style={{ marginTop: 12, borderTop: '1px solid rgba(123,47,255,0.15)',
+      paddingTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: 10 }}>
+        <Label color="#7b2fff">ASK ABOUT {symbol}</Label>
+        <button onClick={onClose} style={{ background: 'none', border: 'none',
+          color: '#4a5680', fontSize: 14, cursor: 'pointer', padding: '0 4px' }}>×</button>
       </div>
 
-      {!ans && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+      {/* Messages */}
+      <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 10,
+        display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{
+            alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+            maxWidth: '88%',
+            padding: '8px 12px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+            background: m.role === 'user' ? 'rgba(123,47,255,0.25)' : 'rgba(0,180,255,0.1)',
+            border: `1px solid ${m.role === 'user' ? 'rgba(123,47,255,0.4)' : 'rgba(0,180,255,0.2)'}`,
+            fontSize: 10, lineHeight: 1.6, color: m.role === 'user' ? '#c4a8ff' : '#a0c8e8',
+            fontFamily: m.role === 'user' ? 'Space Grotesk' : 'JetBrains Mono, monospace',
+            animation: 'slide-up 0.2s ease',
+          }}>
+            {m.text.includes('PARKING THIS') ? (
+              <div>
+                <span style={{ color: '#ffcc00', fontWeight: 700 }}>📌 PARKED: </span>
+                {m.text.replace('PARKING THIS:', '').trim()}
+              </div>
+            ) : m.text}
+          </div>
+        ))}
+        {busy && (
+          <div style={{ alignSelf: 'flex-start', padding: '8px 12px',
+            background: 'rgba(0,180,255,0.08)', borderRadius: '14px 14px 14px 4px',
+            fontSize: 10, color: '#4a5680', fontFamily: 'JetBrains Mono, monospace',
+            border: '1px solid rgba(0,180,255,0.15)' }}>
+            thinking across dimensions...
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Quick suggestions */}
+      {msgs.length <= 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
           {suggestions.map(s => (
-            <button key={s} onClick={() => setQ(s)} style={{
-              padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(79,142,247,0.2)',
-              background: 'transparent', color: '#3a4d6e', fontSize: 8,
-              fontFamily: 'JetBrains Mono, monospace', cursor: 'pointer',
+            <button key={s} onClick={() => send(s)} style={{
+              padding: '3px 8px', borderRadius: 8,
+              border: '1px solid rgba(123,47,255,0.2)',
+              background: 'rgba(123,47,255,0.06)',
+              color: '#4a5680', fontSize: 8,
+              fontFamily: 'Space Grotesk, sans-serif',
+              transition: 'all 0.2s',
             }}>{s}</button>
           ))}
         </div>
       )}
 
-      {ans && (
-        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10,
-          background: 'rgba(79,142,247,0.1)', border: '1px solid rgba(79,142,247,0.2)',
-          fontSize: 11, color: '#a0c4ff', lineHeight: 1.7,
-          fontFamily: 'JetBrains Mono, monospace' }}>
-          {ans}
-          <button onClick={() => { setAns(''); setQ(''); }} style={{
-            display: 'block', marginTop: 8, padding: '4px 10px', borderRadius: 6,
-            border: '1px solid rgba(79,142,247,0.3)', background: 'transparent',
-            color: '#4f8ef7', fontSize: 8, cursor: 'pointer',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}>← Ask another</button>
+      {/* Input */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder={`Ask anything about ${symbol}...`}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 10, outline: 'none',
+            border: '1px solid rgba(123,47,255,0.25)',
+            background: 'rgba(123,47,255,0.08)',
+            color: '#e0e8ff', fontSize: 10,
+            fontFamily: 'JetBrains Mono, monospace' }}/>
+        <button onClick={() => send()} disabled={busy || !input.trim()} style={{
+          padding: '8px 14px', borderRadius: 10, border: 'none',
+          background: busy || !input.trim() ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #7b2fff, #00b4ff)',
+          color: busy || !input.trim() ? '#4a5680' : '#fff',
+          fontWeight: 700, fontSize: 11, transition: 'all 0.2s',
+          boxShadow: busy || !input.trim() ? 'none' : '0 0 20px rgba(123,47,255,0.4)',
+        }}>{busy ? '...' : '→'}</button>
+      </div>
+
+      {/* Park status */}
+      {PARKED.questions.filter(q => q.symbol === symbol).length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
+          color: '#ffcc0088' }}>
+          📌 {PARKED.questions.filter(q => q.symbol === symbol).length} question(s) parked for {symbol}
         </div>
       )}
-    </Glass>
+    </div>
+  );
+}
+
+// ── STOCK CARD ────────────────────────────────────────────────
+function StockCard({ inst, idx, regime, snap }) {
+  const [chatOpen, setChatOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const c = inst.score >= 75 ? '#00ffcc' : inst.score >= 60 ? '#00b4ff' : inst.score >= 45 ? '#ffcc00' : '#ff2d78';
+  const cal = inst.calibration || {};
+  const bR  = cal.base_returns?.[regime];
+  const sig = inst.signal || '';
+  const sigC = sig.includes('BUY') || sig.includes('ADD') ? '#00ffcc'
+    : sig.includes('AVOID') || sig.includes('SELL') ? '#ff2d78' : '#ffcc00';
+  const isTop = inst.isTop;
+
+  return (
+    <Panel glow={chatOpen ? c : undefined} animate
+      style={{ marginBottom: 8, padding: '14px 16px' }}>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
+        onClick={() => setExpanded(!expanded)}>
+        <DimScore score={inst.score} size={50}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#e0e8ff',
+              fontFamily: 'Space Grotesk, sans-serif' }}>{inst.tk}</span>
+            {isTop && <span style={{ fontSize: 10 }}>★</span>}
+            {sig && <Pill color={sigC} small>{sig}</Pill>}
+            {inst.isUS && <Pill color="#ffcc00" small>US</Pill>}
+          </div>
+          <div style={{ fontSize: 9, color: '#4a5680', marginTop: 2,
+            fontFamily: 'JetBrains Mono, monospace' }}>
+            {inst.sector}
+            {inst.last_price && (
+              <span style={{ color: '#1e2545', marginLeft: 6 }}>
+                {inst.isUS ? '$' : '₹'}{inst.last_price?.toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
+
+          {/* Score bar */}
+          <div style={{ marginTop: 8, height: 2,
+            background: 'rgba(255,255,255,0.04)', borderRadius: 1, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${inst.score}%`,
+              background: `linear-gradient(90deg, ${c}88, ${c})`,
+              borderRadius: 1, boxShadow: `0 0 8px ${c}66`,
+              transition: 'width 1s cubic-bezier(0.4,0,0.2,1)' }}/>
+          </div>
+
+          {/* Quick stats */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+            {bR !== undefined && (
+              <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
+                color: bR >= 0 ? '#00ffcc' : '#ff2d78' }}>
+                {bR >= 0 ? '+' : ''}{bR?.toFixed(0)}% exp
+              </span>
+            )}
+            {cal.source === 'calculated' && (
+              <span style={{ fontSize: 8, color: '#00ffcc44',
+                fontFamily: 'JetBrains Mono, monospace' }}>✓ REAL</span>
+            )}
+          </div>
+        </div>
+
+        {/* Chat button */}
+        <button onClick={e => { e.stopPropagation(); setChatOpen(!chatOpen); }}
+          style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${chatOpen ? '#7b2fff' : 'rgba(123,47,255,0.2)'}`,
+            background: chatOpen ? 'rgba(123,47,255,0.2)' : 'rgba(123,47,255,0.06)',
+            color: chatOpen ? '#c4a8ff' : '#7b2fff',
+            fontSize: 10, fontWeight: 700, flexShrink: 0,
+            transition: 'all 0.2s',
+            fontFamily: 'Space Grotesk, sans-serif' }}>
+          {chatOpen ? '× ASK' : '⚡ ASK'}
+        </button>
+      </div>
+
+      {/* Reason */}
+      {inst.reason && (expanded || chatOpen) && (
+        <div style={{ marginTop: 8, fontSize: 9,
+          fontFamily: 'JetBrains Mono, monospace', color: '#4a5680',
+          lineHeight: 1.6, paddingTop: 8,
+          borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+          {inst.reason}
+        </div>
+      )}
+
+      {/* Expanded calibration */}
+      {expanded && cal.base_returns && (
+        <div style={{ marginTop: 10 }}>
+          <Label color="#4a5680">REGIME RETURNS</Label>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {Object.entries(cal.base_returns).map(([r, v]) => (
+              <div key={r} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 8,
+                fontFamily: 'JetBrains Mono, monospace',
+                background: r === regime ? `${c}15` : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${r === regime ? `${c}44` : 'rgba(255,255,255,0.06)'}`,
+                color: r === regime ? c : '#4a5680' }}>
+                {r.replace('_',' ')}: {v >= 0 ? '+' : ''}{v}%
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Per-stock AI Chat */}
+      {chatOpen && (
+        <StockChat symbol={inst.tk} data={{ snap, analysis: { scores: { scores: {} } } }}
+          onClose={() => setChatOpen(false)}/>
+      )}
+    </Panel>
+  );
+}
+
+// ── PARKED QUESTIONS PANEL ────────────────────────────────────
+function ParkedPanel() {
+  if (PARKED.questions.length === 0) return null;
+  return (
+    <Panel glow="#ffcc00" style={{ marginBottom: 8 }}>
+      <Label color="#ffcc00">📌 PARKED QUESTIONS ({PARKED.questions.length})</Label>
+      <div style={{ fontSize: 9, color: '#4a5680', marginBottom: 8,
+        fontFamily: 'JetBrains Mono, monospace' }}>
+        Questions we couldn't answer — debate later
+      </div>
+      {PARKED.questions.map((q, i) => (
+        <div key={i} style={{ padding: '6px 10px', marginBottom: 4, borderRadius: 8,
+          background: 'rgba(255,204,0,0.06)', border: '1px solid rgba(255,204,0,0.15)',
+          fontSize: 9, fontFamily: 'JetBrains Mono, monospace' }}>
+          <span style={{ color: '#ffcc00' }}>{q.symbol}</span>
+          <span style={{ color: '#4a5680' }}> · {q.question}</span>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+// ── GLOBAL AI CHAT ────────────────────────────────────────────
+function GlobalChat({ data }) {
+  const [msgs,  setMsgs]  = useState([
+    { role: 'ai', text: 'I see across all 5 market dimensions simultaneously. Ask me about any stock, the regime, your portfolio, sectors — anything. Questions I cannot answer will be parked for debate.' }
+  ]);
+  const [input, setInput] = useState('');
+  const [busy,  setBusy]  = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  const send = async () => {
+    const q = input.trim();
+    if (!q || busy) return;
+    setInput('');
+    setMsgs(m => [...m, { role: 'user', text: q }]);
+    setBusy(true);
+    try {
+      const snap = data?.snap || {};
+      const analysis = data?.analysis || {};
+      const scores = analysis.scores?.scores || {};
+      const top5 = analysis.scores?.top5 || [];
+      const context = `
+Regime: ${snap.regime} (Score ${snap.regime_score}/5)
+Nifty: ${snap.indices?.['NIFTY 50']?.last?.toLocaleString('en-IN') || '--'}
+VIX: ${snap.indices?.['INDIA VIX']?.last?.toFixed(1) || '--'}
+FII: ${snap.fii?.fii_net ? `${snap.fii.fii_net >= 0 ? '+' : ''}${Math.round(snap.fii.fii_net)} Cr` : '--'}
+USD/INR: ${snap.usdInr?.toFixed(2) || '--'}
+Brent: ${snap.brent ? `$${snap.brent.toFixed(1)}` : '--'}
+Top picks: ${top5.join(', ')}
+Portfolio: NET $${snap.usPrices?.NET?.toFixed(2) || '?'} (avg $208.62), CEG $${snap.usPrices?.CEG?.toFixed(2) || '?'} (avg $310.43), GLNG $${snap.usPrices?.GLNG?.toFixed(2) || '?'} (avg $50.93)
+Narrative: ${(analysis.regimeNarrative || '').slice(0, 300)}
+Sample scores: ${Object.entries(scores).slice(0,15).map(([k,v])=>`${k}:${v.score}`).join(', ')}
+      `.trim();
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: `You are Investment Radar AI — a hyper-dimensional market intelligence system. You have access to real-time Indian and US market data. Answer any investment question directly, with numbers, in 3-5 sentences. If you cannot answer due to missing data, say "PARKING THIS: [question]". Never say "consult a financial advisor". Be decisive.`,
+          messages: [{ role: 'user', content: `Market data:\n${context}\n\nQuestion: ${q}` }],
+        }),
+      });
+      const d = await res.json();
+      const answer = d.content?.[0]?.text || 'No response.';
+      if (answer.includes('PARKING THIS:')) {
+        PARKED.questions.push({ symbol: 'GLOBAL', question: q, ts: new Date().toISOString() });
+      }
+      setMsgs(m => [...m, { role: 'ai', text: answer }]);
+    } catch(e) {
+      setMsgs(m => [...m, { role: 'ai', text: `Error: ${e.message}` }]);
+    } finally { setBusy(false); }
+  };
+
+  const suggestions = [
+    'What should I do with my portfolio today?',
+    'Which sector is strongest in BEAR regime?',
+    'Is GLNG a good add now?',
+    'What does FII -44Cr mean for tomorrow?',
+    'Top 3 stocks to watch this week?',
+  ];
+
+  return (
+    <Panel glow="#7b2fff">
+      <Label color="#7b2fff">⚡ INVESTMENT RADAR AI</Label>
+      <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 10,
+        display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{
+            alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+            maxWidth: '90%',
+            padding: '9px 13px',
+            borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+            background: m.role === 'user' ? 'rgba(123,47,255,0.2)' : 'rgba(0,180,255,0.08)',
+            border: `1px solid ${m.role === 'user' ? 'rgba(123,47,255,0.35)' : 'rgba(0,180,255,0.15)'}`,
+            fontSize: 10, lineHeight: 1.7,
+            color: m.role === 'user' ? '#c4a8ff' : '#9cc8e0',
+            fontFamily: m.role === 'user' ? 'Space Grotesk' : 'JetBrains Mono, monospace',
+            animation: 'slide-up 0.25s ease',
+          }}>
+            {m.text.includes('PARKING THIS') ? (
+              <><span style={{ color: '#ffcc00', fontWeight: 700 }}>📌 PARKED: </span>
+              {m.text.replace('PARKING THIS:', '').trim()}</>
+            ) : m.text}
+          </div>
+        ))}
+        {busy && (
+          <div style={{ alignSelf: 'flex-start', padding: '9px 13px',
+            background: 'rgba(0,180,255,0.06)', borderRadius: '16px 16px 16px 4px',
+            fontSize: 10, color: '#4a5680', fontFamily: 'JetBrains Mono, monospace',
+            border: '1px solid rgba(0,180,255,0.12)' }}>
+            traversing dimensions...
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {msgs.length <= 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+          {suggestions.map(s => (
+            <button key={s} onClick={() => { setInput(s); }}
+              style={{ padding: '3px 8px', borderRadius: 8, fontSize: 8,
+                border: '1px solid rgba(123,47,255,0.18)',
+                background: 'rgba(123,47,255,0.05)',
+                color: '#4a5680', fontFamily: 'Space Grotesk' }}>{s}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder="Ask the AI anything about markets..."
+          style={{ flex: 1, padding: '10px 14px', borderRadius: 12, outline: 'none',
+            border: '1px solid rgba(123,47,255,0.2)',
+            background: 'rgba(123,47,255,0.06)',
+            color: '#e0e8ff', fontSize: 10,
+            fontFamily: 'JetBrains Mono, monospace' }}/>
+        <button onClick={send} disabled={busy || !input.trim()} style={{
+          padding: '10px 16px', borderRadius: 12, border: 'none', fontSize: 12,
+          background: busy || !input.trim()
+            ? 'rgba(255,255,255,0.04)'
+            : 'linear-gradient(135deg, #7b2fff, #00b4ff)',
+          color: busy || !input.trim() ? '#4a5680' : '#fff',
+          fontWeight: 700, transition: 'all 0.2s',
+          boxShadow: busy || !input.trim() ? 'none' : '0 0 25px rgba(123,47,255,0.5)',
+        }}>→</button>
+      </div>
+    </Panel>
   );
 }
 
 // ── DASHBOARD TAB ─────────────────────────────────────────────
 function DashboardTab({ data }) {
-  const snap     = data?.snap     || {};
-  const analysis = data?.analysis || {};
-  const regime   = snap.regime    || 'SIDEWAYS';
-  const rm       = REGIME[regime] || REGIME.SIDEWAYS;
-  const scores   = analysis.scores?.scores || {};
-  const top5     = analysis.scores?.top5   || [];
-  const fii      = snap.fii?.fii_net || 0;
-  const nifty    = snap.indices?.['NIFTY 50'];
-  const vix      = snap.indices?.['INDIA VIX'];
-  const [showFull, setShowFull] = useState(false);
-
+  const snap      = data?.snap     || {};
+  const analysis  = data?.analysis || {};
+  const regime    = snap.regime    || 'SIDEWAYS';
+  const dm        = DIM[regime]    || DIM.SIDEWAYS;
+  const scores    = analysis.scores?.scores || {};
+  const top5      = analysis.scores?.top5   || [];
+  const fii       = snap.fii?.fii_net || 0;
+  const nifty     = snap.indices?.['NIFTY 50'];
+  const vix       = snap.indices?.['INDIA VIX'];
+  const [full,    setFull]    = useState(false);
   const ageMin = snap.ts ? Math.round((Date.now() - new Date(snap.ts).getTime()) / 60000) : null;
 
-  // Fake sparkline data from regime score for viz
-  const sparkData = [45, 48, 52, 49, 55, 58, 54, 60, 57, 62, 58, 65];
-
   return (
-    <div style={{ padding: '0 14px 90px' }}>
+    <div style={{ padding: '0 14px 90px', position: 'relative' }}>
+      <DimOrbs regime={regime}/>
 
-      {/* Live indicator */}
+      {/* Live bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8,
-        padding: '10px 0 8px', fontSize: 9,
-        fontFamily: 'JetBrains Mono, monospace', color: '#3a4d6e' }}>
-        <PulseDot color={ageMin < 30 ? '#00ffaa' : '#ffcc00'} />
-        <span style={{ color: ageMin < 30 ? '#00ffaa' : '#ffcc00' }}>
+        padding: '10px 0 8px', fontSize: 8, position: 'relative', zIndex: 1,
+        fontFamily: 'JetBrains Mono, monospace', color: '#4a5680' }}>
+        <div style={{ position: 'relative', width: 7, height: 7 }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
+            background: ageMin < 30 ? '#00ffcc' : '#ffcc00',
+            animation: 'pulse-ring 2s ease-out infinite' }}/>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
+            background: ageMin < 30 ? '#00ffcc' : '#ffcc00' }}/>
+        </div>
+        <span style={{ color: ageMin < 30 ? '#00ffcc' : '#ffcc00' }}>
           {snap.label || 'Loading'}
         </span>
         {ageMin !== null && <span>· {ageMin}m ago</span>}
-        <span style={{ marginLeft: 'auto' }}>
-          {snap.model === 'python-quant-v1' ? '⚡ QUANT' : '🤖 AI'}
+        <span style={{ marginLeft: 'auto', color: '#1e2545' }}>
+          {snap.model === 'python-quant-v1' ? '⚡ QUANT' : '🤖 HAIKU'}
         </span>
       </div>
 
-      {/* Regime Hero */}
-      <div onClick={() => setShowFull(!showFull)} style={{
-        position: 'relative', overflow: 'hidden',
-        background: `radial-gradient(ellipse at 50% 0%, ${rm.glow}, transparent 70%), rgba(8,12,24,0.8)`,
-        border: `1px solid ${rm.color}33`,
-        borderRadius: 20, padding: '20px 20px 16px', marginBottom: 10,
-        cursor: 'pointer',
-        boxShadow: `0 0 40px ${rm.glow}`,
+      {/* Dimensional Regime Banner */}
+      <div onClick={() => setFull(!full)} style={{ position: 'relative', zIndex: 1,
+        background: `radial-gradient(ellipse at 30% 50%, ${dm.color}15, transparent 70%), rgba(13,17,40,0.7)`,
+        backdropFilter: 'blur(30px)',
+        border: `1px solid ${dm.color}25`,
+        borderRadius: 24, padding: '22px 22px 18px',
+        marginBottom: 10, cursor: 'pointer', overflow: 'hidden',
+        boxShadow: `0 0 60px ${dm.color}10, inset 0 0 40px ${dm.color}05`,
+        animation: 'slide-up 0.4s ease',
       }}>
-        {/* Animated grid bg */}
-        <div style={{ position: 'absolute', inset: 0, opacity: 0.04,
-          backgroundImage: `linear-gradient(${rm.color} 1px, transparent 1px), linear-gradient(90deg, ${rm.color} 1px, transparent 1px)`,
-          backgroundSize: '20px 20px', pointerEvents: 'none' }}/>
+        {/* Scan line */}
+        <div style={{ position: 'absolute', left: 0, right: 0, height: 1,
+          background: `linear-gradient(90deg, transparent, ${dm.color}44, transparent)`,
+          animation: 'scan 4s linear infinite', opacity: 0.4, pointerEvents: 'none' }}/>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-              letterSpacing: 3, color: rm.color, opacity: 0.7, marginBottom: 6 }}>
-              MARKET REGIME
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
+              letterSpacing: 3, color: `${dm.color}88`, marginBottom: 6 }}>
+              DIMENSIONAL MARKET STATE
             </div>
-            <div style={{ fontSize: 32, fontWeight: 900, color: rm.color,
-              fontFamily: 'JetBrains Mono, monospace', letterSpacing: 2,
-              textShadow: `0 0 20px ${rm.color}` }}>
-              {rm.icon} {rm.label}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              <span style={{ fontSize: 36, fontWeight: 700, color: dm.color,
+                fontFamily: 'Space Grotesk, sans-serif',
+                textShadow: `0 0 30px ${dm.color}`, letterSpacing: 1,
+                animation: 'flicker 8s ease infinite' }}>
+                {dm.icon} {dm.label}
+              </span>
             </div>
-            <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
-              color: '#7a90b8', marginTop: 4 }}>
-              Score {snap.regime_score || 0}/5 · {showFull ? 'tap to collapse' : 'tap for analysis'}
+            <div style={{ fontSize: 10, color: '#4a5680', marginTop: 4,
+              fontFamily: 'JetBrains Mono, monospace' }}>
+              {dm.dim} · Score {snap.regime_score || 0}/5
             </div>
           </div>
-          <SparkLine data={sparkData} color={rm.color} width={80} height={40}/>
+          <HyperLine
+            data={[45,48,42,50,47,55,52,58,54,60,56,62,58,65]}
+            color={dm.color} width={90} height={50}/>
         </div>
 
         {/* Evidence pills */}
         <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
           {[
-            { label: `FII ${fii >= 0 ? '+' : ''}${(fii/100).toFixed(0)}Cr`,
-              color: fii >= 0 ? '#00ffaa' : '#ff2244' },
-            { label: `VIX ${vix?.last?.toFixed(1) || '--'}`,
-              color: (vix?.last || 0) > 20 ? '#ff2244' : '#ffcc00' },
-            { label: `₹${snap.usdInr?.toFixed(2) || '--'}/$`,
-              color: '#4f8ef7' },
-            { label: `Brent $${snap.brent?.toFixed(0) || '--'}`,
-              color: (snap.brent || 0) > 95 ? '#ff2244' : '#ffcc00' },
-          ].map(p => (
-            <div key={p.label} style={{ padding: '4px 10px', borderRadius: 20,
-              background: `${p.color}15`, border: `1px solid ${p.color}33`,
-              fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: p.color }}>
-              {p.label}
-            </div>
-          ))}
+            { l: `FII ${fii >= 0 ? '+' : ''}${(Math.abs(fii)/100).toFixed(0)}Cr`,
+              c: fii >= 0 ? '#00ffcc' : '#ff2d78' },
+            { l: `VIX ${vix?.last?.toFixed(1) || '--'}`,
+              c: (vix?.last||0) > 20 ? '#ff2d78' : '#ffcc00' },
+            { l: `₹${snap.usdInr?.toFixed(2) || '--'}/$`,
+              c: '#00b4ff' },
+            { l: `Brent $${snap.brent?.toFixed(1) || '--'}`,
+              c: (snap.brent||0) > 95 ? '#ff2d78' : '#ffcc00' },
+          ].map(p => <Pill key={p.l} color={p.c} small>{p.l}</Pill>)}
         </div>
 
-        {showFull && analysis.regimeNarrative && (
+        {/* Full narrative */}
+        {full && analysis.regimeNarrative && (
           <div style={{ marginTop: 14, paddingTop: 14,
-            borderTop: `1px solid ${rm.color}22`,
-            fontSize: 10, color: '#a0b4d0', lineHeight: 1.8,
+            borderTop: `1px solid ${dm.color}18`,
+            fontSize: 10, color: '#7a90b8', lineHeight: 1.8,
             fontFamily: 'JetBrains Mono, monospace' }}>
             {analysis.regimeNarrative}
           </div>
@@ -325,105 +748,100 @@ function DashboardTab({ data }) {
       </div>
 
       {/* Macro grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+        gap: 8, marginBottom: 10, position: 'relative', zIndex: 1 }}>
         {[
-          { l: 'NIFTY', v: nifty?.last, fmt: v => v?.toLocaleString('en-IN'),
-            sub: `${(nifty?.pChange||0) >= 0 ? '+' : ''}${nifty?.pChange?.toFixed(2)||0}%`,
-            color: (nifty?.pChange||0) >= 0 ? '#00ffaa' : '#ff2244' },
-          { l: 'INDIA VIX', v: vix?.last, fmt: v => v?.toFixed(1),
-            sub: (vix?.last||0) > 20 ? 'HIGH FEAR' : 'CALM',
-            color: (vix?.last||0) > 20 ? '#ff2244' : '#00ffaa' },
-          { l: 'FII TODAY', v: fii, fmt: v => `${v >= 0 ? '+' : ''}${(v/100).toFixed(0)}Cr`,
-            sub: fii >= 0 ? 'BUYING' : 'SELLING',
-            color: fii >= 0 ? '#00ffaa' : '#ff2244' },
+          { l: 'NIFTY 50',  v: nifty?.last,    fmt: v => v?.toLocaleString('en-IN'),
+            sub: `${(nifty?.pChange||0)>=0?'+':''}${nifty?.pChange?.toFixed(2)||0}%`,
+            color: (nifty?.pChange||0)>=0 ? '#00ffcc' : '#ff2d78' },
+          { l: 'INDIA VIX', v: vix?.last,      fmt: v => v?.toFixed(1),
+            sub: (vix?.last||0)>20 ? 'HIGH' : 'CALM',
+            color: (vix?.last||0)>20 ? '#ff2d78' : '#00ffcc' },
+          { l: 'FII FLOW',  v: Math.abs(fii),  fmt: v => `${fii>=0?'+':'-'}${(v/100).toFixed(0)}Cr`,
+            sub: fii>=0 ? 'BUYING' : 'SELLING',
+            color: fii>=0 ? '#00ffcc' : '#ff2d78' },
         ].map(m => (
-          <div key={m.l} style={{ background: 'rgba(8,12,24,0.7)', backdropFilter: 'blur(20px)',
-            border: `1px solid ${m.color}22`, borderRadius: 14, padding: '12px 12px 10px',
-            boxShadow: `inset 0 0 20px ${m.color}08` }}>
+          <div key={m.l} style={{ background: 'rgba(13,17,40,0.65)',
+            backdropFilter: 'blur(20px)',
+            border: `1px solid ${m.color}18`,
+            borderRadius: 16, padding: '12px 12px 10px',
+            boxShadow: `inset 0 0 20px ${m.color}06` }}>
             <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-              color: '#3a4d6e', letterSpacing: 2, marginBottom: 6 }}>{m.l}</div>
-            <div style={{ fontSize: 16, fontWeight: 900, fontFamily: 'JetBrains Mono, monospace',
-              color: m.color, textShadow: `0 0 10px ${m.color}66` }}>
+              color: '#4a5680', letterSpacing: 2, marginBottom: 6 }}>{m.l}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: m.color,
+              fontFamily: 'JetBrains Mono, monospace',
+              textShadow: `0 0 12px ${m.color}66` }}>
               {m.v !== undefined && m.v !== null ? m.fmt(m.v) : '--'}
             </div>
-            <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-              color: '#3a4d6e', marginTop: 3 }}>{m.sub}</div>
+            <div style={{ fontSize: 8, color: '#4a5680', marginTop: 3,
+              fontFamily: 'JetBrains Mono, monospace' }}>{m.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* AI Chat */}
-      <AskAI data={data} />
+      {/* Global AI Chat */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <GlobalChat data={data}/>
+      </div>
 
-      {/* Top 5 */}
+      {/* Top picks */}
       {top5.length > 0 && (
-        <Glass>
-          <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: 3, color: '#00ffaa', marginBottom: 12 }}>TODAY'S TOP PICKS</div>
+        <Panel glow="#00ffcc" style={{ position: 'relative', zIndex: 1 }}>
+          <Label color="#00ffcc">TODAY'S TOP DIMENSIONAL PICKS</Label>
           {top5.map((tk, i) => {
             const s = scores[tk] || {};
-            const c = s.score >= 75 ? '#00ffaa' : s.score >= 60 ? '#4f8ef7' : '#ffcc00';
+            const c = s.score >= 75 ? '#00ffcc' : s.score >= 60 ? '#00b4ff' : '#ffcc00';
             return (
               <div key={tk} style={{ display: 'flex', alignItems: 'center', gap: 12,
-                padding: '8px 0', borderBottom: i < top5.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#3a4d6e', width: 18 }}>#{i+1}</div>
-                <ScoreRing score={s.score || 50} size={42}/>
+                padding: '9px 0', borderBottom: i < top5.length-1
+                  ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                <DimScore score={s.score || 50} size={44}/>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#e8f0fe',
-                    fontFamily: 'JetBrains Mono, monospace' }}>{tk}</div>
-                  {s.reason && <div style={{ fontSize: 8, color: '#7a90b8',
-                    fontFamily: 'JetBrains Mono, monospace', marginTop: 2,
-                    lineHeight: 1.5 }}>{s.reason?.slice(0, 80)}</div>}
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#e0e8ff',
+                    fontFamily: 'Space Grotesk, sans-serif' }}>{tk}</div>
+                  {s.reason && <div style={{ fontSize: 8, color: '#4a5680', marginTop: 2,
+                    lineHeight: 1.5, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {s.reason?.slice(0, 70)}
+                  </div>}
                 </div>
-                {s.signal && (
-                  <div style={{ padding: '3px 8px', borderRadius: 6, fontSize: 8,
-                    fontFamily: 'JetBrains Mono, monospace', fontWeight: 900,
-                    background: `${c}15`, border: `1px solid ${c}33`, color: c }}>
-                    {s.signal}
-                  </div>
-                )}
+                {s.signal && <Pill color={c} small>{s.signal}</Pill>}
               </div>
             );
           })}
-        </Glass>
+        </Panel>
       )}
 
       {/* Portfolio signals */}
       {analysis.portfolioSignal && (
-        <Glass glow="rgba(255,204,0,0.08)">
-          <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: 3, color: '#ffcc00', marginBottom: 12 }}>YOUR PORTFOLIO SIGNALS</div>
-          {['NET', 'CEG', 'GLNG'].map(tk => {
-            const sig  = analysis.portfolioSignal[tk];
+        <Panel glow="#ffcc00" style={{ position: 'relative', zIndex: 1 }}>
+          <Label color="#ffcc00">YOUR PORTFOLIO SIGNALS</Label>
+          {['NET','CEG','GLNG'].map(tk => {
+            const sig   = analysis.portfolioSignal[tk];
             if (!sig) return null;
-            const curr = snap.usPrices?.[tk];
-            const avgs = { NET: 208.62, CEG: 310.43, GLNG: 50.93 };
-            const pct  = curr ? ((curr - avgs[tk]) / avgs[tk] * 100) : 0;
-            const pos  = pct >= 0;
-            const ac   = sig.action === 'BUY' || sig.action === 'ADD' ? '#00ffaa'
-              : sig.action === 'SELL' ? '#ff2244' : '#ffcc00';
+            const curr  = snap.usPrices?.[tk];
+            const avgs  = { NET: 208.62, CEG: 310.43, GLNG: 50.93 };
+            const pct   = curr ? ((curr - avgs[tk]) / avgs[tk] * 100) : null;
+            const pos   = pct >= 0;
+            const ac    = sig.action === 'BUY' || sig.action === 'ADD' ? '#00ffcc'
+              : sig.action === 'SELL' ? '#ff2d78' : '#ffcc00';
             return (
               <div key={tk} style={{ display: 'flex', gap: 12, padding: '10px 0',
                 borderBottom: tk !== 'GLNG' ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <div style={{ minWidth: 55 }}>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: '#e8f0fe',
-                    fontFamily: 'JetBrains Mono, monospace' }}>{tk}</div>
-                  {curr && <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
-                    color: pos ? '#00ffaa' : '#ff2244', marginTop: 2 }}>
-                    ${curr.toFixed(2)} <span style={{ fontSize: 9 }}>
-                      {pos ? '▲' : '▼'}{Math.abs(pct).toFixed(1)}%
-                    </span>
+                <div style={{ minWidth: 56 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#e0e8ff',
+                    fontFamily: 'Space Grotesk, sans-serif' }}>{tk}</div>
+                  {curr && <div style={{ fontSize: 10,
+                    color: pos ? '#00ffcc' : '#ff2d78',
+                    fontFamily: 'JetBrains Mono, monospace' }}>
+                    ${curr.toFixed(2)}{pct !== null &&
+                      <span style={{ fontSize: 9 }}> {pos ? '▲' : '▼'}{Math.abs(pct).toFixed(1)}%</span>}
                   </div>}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 5,
-                    background: `${ac}15`, border: `1px solid ${ac}33`, color: ac,
-                    fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                    fontWeight: 900, marginBottom: 4 }}>{sig.action}</div>
-                  <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#7a90b8', lineHeight: 1.5 }}>{sig.reason}</div>
-                  {sig.stop_loss && <div style={{ fontSize: 8, color: '#3a4d6e',
+                  <Pill color={ac} small>{sig.action}</Pill>
+                  <div style={{ fontSize: 9, color: '#4a5680', marginTop: 4, lineHeight: 1.5,
+                    fontFamily: 'JetBrains Mono, monospace' }}>{sig.reason}</div>
+                  {sig.stop_loss && <div style={{ fontSize: 8, color: '#1e2545',
                     fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>
                     SL ${sig.stop_loss} · TP ${sig.target}
                   </div>}
@@ -431,35 +849,40 @@ function DashboardTab({ data }) {
               </div>
             );
           })}
-        </Glass>
+        </Panel>
       )}
 
-      {/* NSE Movers */}
+      {/* Parked questions */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <ParkedPanel/>
+      </div>
+
+      {/* Movers */}
       {snap.gainers?.length > 0 && (
-        <Glass>
-          <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: 3, color: '#7a90b8', marginBottom: 12 }}>NSE MOVERS</div>
+        <Panel style={{ position: 'relative', zIndex: 1 }}>
+          <Label>NSE DIMENSIONAL MOVERS</Label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[{ list: snap.gainers, c: '#00ffaa', label: 'GAINERS' },
-              { list: snap.losers,  c: '#ff2244', label: 'LOSERS'  }].map(({ list, c, label }) => (
-              <div key={label}>
+            {[{ list: snap.gainers, c: '#00ffcc', l: 'GAINERS' },
+              { list: snap.losers,  c: '#ff2d78', l: 'LOSERS'  }].map(({ list, c, l }) => (
+              <div key={l}>
                 <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                  color: c, letterSpacing: 2, marginBottom: 8 }}>{label}</div>
-                {(list || []).slice(0, 5).map(s => (
-                  <div key={s.symbol} style={{ display: 'flex', justifyContent: 'space-between',
-                    padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  color: c, letterSpacing: 2, marginBottom: 8 }}>{l}</div>
+                {(list||[]).slice(0,5).map(s => (
+                  <div key={s.symbol} style={{ display: 'flex',
+                    justifyContent: 'space-between', padding: '4px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
-                      color: '#e8f0fe' }}>{s.symbol}</span>
+                      color: '#e0e8ff' }}>{s.symbol}</span>
                     <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
                       color: c, fontWeight: 700 }}>
-                      {label === 'GAINERS' ? '+' : ''}{parseFloat(s.pChange).toFixed(1)}%
+                      {l==='GAINERS'?'+':''}{parseFloat(s.pChange).toFixed(1)}%
                     </span>
                   </div>
                 ))}
               </div>
             ))}
           </div>
-        </Glass>
+        </Panel>
       )}
     </div>
   );
@@ -470,19 +893,18 @@ function OpportunitiesTab({ data }) {
   const [search,  setSearch]  = useState('');
   const [minS,    setMinS]    = useState(50);
   const [country, setCountry] = useState('ALL');
-  const [exp,     setExp]     = useState(null);
 
   const snap    = data?.snap     || {};
   const analysis= data?.analysis || {};
   const regime  = snap.regime    || 'SIDEWAYS';
-  const rm      = REGIME[regime] || REGIME.SIDEWAYS;
+  const dm      = DIM[regime]    || DIM.SIDEWAYS;
   const scores  = analysis.scores?.scores || {};
   const top5    = analysis.scores?.top5   || [];
 
   const US = new Set(['NET','CEG','GLNG','NVDA','MSFT','AAPL','GOOGL','META','AMZN',
-    'TSLA','JPM','GS','XOM','LNG','GLD','QQQ','SPY','PLTR','AMD','AVGO','CRM']);
+    'TSLA','JPM','GS','XOM','LNG','GLD','QQQ','SPY','PLTR','AMD','AVGO']);
 
-  const list = Object.entries(scores)
+  const list = useMemo(() => Object.entries(scores)
     .filter(([tk, s]) => {
       if (s.score < minS) return false;
       const isUS = US.has(tk) || s.country === 'US';
@@ -490,92 +912,102 @@ function OpportunitiesTab({ data }) {
       if (country === 'IN' && isUS) return false;
       if (search) {
         const q = search.toLowerCase();
-        return tk.toLowerCase().includes(q) || (s.reason||'').toLowerCase().includes(q) || (s.sector||'').toLowerCase().includes(q);
+        return tk.toLowerCase().includes(q) ||
+          (s.reason||'').toLowerCase().includes(q) ||
+          (s.sector||'').toLowerCase().includes(q);
       }
       return true;
     })
     .map(([tk, s]) => ({ tk, ...s, isTop: top5.includes(tk), isUS: US.has(tk) }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score),
+    [scores, minS, country, search, top5]);
 
   // Sector heatmap
-  const sectors = Object.values(scores).reduce((m, s) => {
-    const sec = (s.sector || 'Other').split(' ')[0].slice(0, 10);
-    if (!m[sec]) m[sec] = { sum: 0, n: 0 };
-    m[sec].sum += s.score; m[sec].n++;
-    return m;
-  }, {});
-  const heatmap = Object.entries(sectors)
-    .map(([s, d]) => ({ s, avg: Math.round(d.sum / d.n), n: d.n }))
-    .sort((a, b) => b.avg - a.avg).slice(0, 12);
+  const heatmap = useMemo(() => {
+    const m = {};
+    Object.values(scores).forEach(s => {
+      const sec = (s.sector||'Other').split(' ')[0].slice(0,10);
+      if (!m[sec]) m[sec] = { sum: 0, n: 0 };
+      m[sec].sum += s.score; m[sec].n++;
+    });
+    return Object.entries(m)
+      .map(([s, d]) => ({ s, avg: Math.round(d.sum/d.n), n: d.n }))
+      .sort((a,b) => b.avg - a.avg).slice(0, 12);
+  }, [scores]);
 
-  const sc = s => s >= 75 ? '#00ffaa' : s >= 60 ? '#4f8ef7' : s >= 45 ? '#ffcc00' : '#ff2244';
+  const sc = s => s>=75?'#00ffcc':s>=60?'#00b4ff':s>=45?'#ffcc00':'#ff2d78';
 
   return (
     <div style={{ overflowY: 'auto', paddingBottom: 90 }}>
       {/* Sticky header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, padding: '10px 14px',
-        background: 'rgba(5,8,16,0.95)', backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20,
+        background: 'rgba(3,5,15,0.95)', backdropFilter: 'blur(24px)',
+        borderBottom: '1px solid rgba(123,47,255,0.1)',
+        padding: '10px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between',
           alignItems: 'center', marginBottom: 8 }}>
           <div>
-            <span style={{ fontSize: 14, fontWeight: 900, color: '#e8f0fe',
-              fontFamily: 'JetBrains Mono, monospace' }}>OPPORTUNITIES</span>
-            <span style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-              color: '#3a4d6e', marginLeft: 8 }}>{list.length} · {regime}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#e0e8ff',
+              fontFamily: 'Space Grotesk' }}>OPPORTUNITIES</span>
+            <span style={{ fontSize: 8, color: '#4a5680', marginLeft: 8,
+              fontFamily: 'JetBrains Mono, monospace' }}>{list.length} · {regime}</span>
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {['ALL','IN','US'].map(c => (
               <button key={c} onClick={() => setCountry(c)} style={{
-                padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
-                border: `1px solid ${country === c ? rm.color + '66' : 'rgba(255,255,255,0.06)'}`,
-                background: country === c ? `${rm.color}15` : 'transparent',
-                color: country === c ? rm.color : '#3a4d6e',
+                padding: '3px 10px', borderRadius: 6, fontSize: 9,
+                fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
+                border: `1px solid ${country===c ? `${dm.color}55` : 'rgba(255,255,255,0.06)'}`,
+                background: country===c ? `${dm.color}12` : 'transparent',
+                color: country===c ? dm.color : '#4a5680',
               }}>{c}</button>
             ))}
           </div>
         </div>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search stock, sector, reason..."
+          placeholder="Search stock, sector, signal..."
           style={{ width: '100%', padding: '8px 12px', borderRadius: 10, outline: 'none',
-            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)',
-            color: '#e8f0fe', fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
+            border: '1px solid rgba(123,47,255,0.18)',
+            background: 'rgba(123,47,255,0.06)',
+            color: '#e0e8ff', fontSize: 10,
+            fontFamily: 'JetBrains Mono, monospace',
             boxSizing: 'border-box', marginBottom: 8 }}/>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {[0,40,50,60,70,80].map(s => (
             <button key={s} onClick={() => setMinS(s)} style={{
-              padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-              fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-              border: `1px solid ${minS === s ? rm.color + '66' : 'rgba(255,255,255,0.06)'}`,
-              background: minS === s ? `${rm.color}15` : 'transparent',
-              color: minS === s ? rm.color : '#3a4d6e',
-            }}>{s === 0 ? 'ALL' : `${s}+`}</button>
+              padding: '3px 8px', borderRadius: 5, fontSize: 8,
+              fontFamily: 'JetBrains Mono, monospace',
+              border: `1px solid ${minS===s ? `${dm.color}55` : 'rgba(255,255,255,0.05)'}`,
+              background: minS===s ? `${dm.color}12` : 'transparent',
+              color: minS===s ? dm.color : '#4a5680',
+            }}>{s===0?'ALL':`${s}+`}</button>
           ))}
         </div>
       </div>
 
       {/* Sector heatmap */}
       {heatmap.length > 0 && (
-        <div style={{ margin: '10px 14px 0', background: 'rgba(8,12,24,0.7)',
-          backdropFilter: 'blur(20px)', borderRadius: 14,
-          border: '1px solid rgba(255,255,255,0.06)', padding: 12 }}>
-          <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: 3, color: '#4f8ef7', marginBottom: 10 }}>SECTOR HEATMAP</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <div style={{ margin: '10px 14px 0',
+          background: 'rgba(13,17,40,0.65)', backdropFilter: 'blur(20px)',
+          borderRadius: 16, border: '1px solid rgba(123,47,255,0.1)', padding: 14 }}>
+          <Label>SECTOR HEATMAP — tap to filter</Label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {heatmap.map(h => {
               const c = sc(h.avg);
               return (
                 <div key={h.s} onClick={() => setSearch(h.s)} style={{
-                  padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
-                  border: `1px solid ${c}33`, background: `${c}0a`,
+                  padding: '6px 10px', borderRadius: 10, cursor: 'pointer',
+                  border: `1px solid ${c}25`,
+                  background: `${c}08`,
                   transition: 'all 0.2s',
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#7a90b8' }}>{h.s}</div>
-                  <div style={{ fontSize: 16, fontWeight: 900,
+                  <div style={{ fontSize: 7, color: '#4a5680',
+                    fontFamily: 'JetBrains Mono, monospace' }}>{h.s}</div>
+                  <div style={{ fontSize: 17, fontWeight: 700,
                     fontFamily: 'JetBrains Mono, monospace', color: c,
-                    textShadow: `0 0 10px ${c}66` }}>{h.avg}</div>
+                    textShadow: `0 0 12px ${c}66` }}>{h.avg}</div>
+                  <div style={{ fontSize: 7, color: '#1e2545',
+                    fontFamily: 'JetBrains Mono, monospace' }}>{h.n}s</div>
                 </div>
               );
             })}
@@ -587,142 +1019,14 @@ function OpportunitiesTab({ data }) {
       <div style={{ padding: '8px 14px 0' }}>
         {list.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
-            <div style={{ fontSize: 40 }}>◉</div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', color: '#3a4d6e',
-              fontSize: 10, marginTop: 8 }}>No stocks match filters</div>
+            <div style={{ fontSize: 40, opacity: 0.3 }}>◎</div>
+            <div style={{ fontSize: 10, color: '#4a5680', marginTop: 8,
+              fontFamily: 'JetBrains Mono, monospace' }}>No stocks match filters</div>
           </div>
-        ) : list.map((inst, idx) => {
-          const isExp = exp === inst.tk;
-          const c = sc(inst.score);
-          const cal = inst.calibration || {};
-          const bR  = cal.base_returns?.[regime];
-          const ac  = (inst.signal||'').includes('BUY') || (inst.signal||'').includes('ADD')
-            ? '#00ffaa' : (inst.signal||'').includes('AVOID') ? '#ff2244' : '#ffcc00';
-
-          return (
-            <div key={inst.tk} onClick={() => setExp(isExp ? null : inst.tk)}
-              style={{ background: 'rgba(8,12,24,0.7)', backdropFilter: 'blur(20px)',
-                borderRadius: 14, cursor: 'pointer', marginBottom: 6, padding: '12px 14px',
-                border: `1px solid ${isExp ? c + '44' : 'rgba(255,255,255,0.05)'}`,
-                boxShadow: isExp ? `0 0 20px ${c}15` : 'none',
-                transition: 'all 0.25s ease' }}>
-
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#3a4d6e', width: 20, paddingTop: 3, flexShrink: 0 }}>
-                  {inst.isTop ? '★' : `#${idx+1}`}
-                </div>
-                <ScoreRing score={inst.score} size={42}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 16, fontWeight: 900, color: '#e8f0fe',
-                      fontFamily: 'JetBrains Mono, monospace' }}>{inst.tk}</span>
-                    {inst.signal && (
-                      <span style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                        padding: '2px 6px', borderRadius: 4, fontWeight: 900,
-                        background: `${ac}15`, border: `1px solid ${ac}33`, color: ac }}>
-                        {inst.signal}
-                      </span>
-                    )}
-                    {inst.isUS && (
-                      <span style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                        padding: '2px 6px', borderRadius: 4,
-                        background: 'rgba(255,204,0,0.1)', border: '1px solid rgba(255,204,0,0.3)',
-                        color: '#ffcc00' }}>US</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#7a90b8', marginTop: 2 }}>
-                    {inst.sector}
-                    {inst.last_price && <span style={{ color: '#3a4d6e' }}>
-                      · {inst.isUS ? '$' : '₹'}{inst.last_price?.toLocaleString('en-IN')}
-                    </span>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Animated score bar */}
-              <div style={{ marginTop: 8, height: 2, background: 'rgba(255,255,255,0.05)',
-                borderRadius: 1, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${inst.score}%`, background: c,
-                  borderRadius: 1, boxShadow: `0 0 8px ${c}`,
-                  transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)' }}/>
-              </div>
-
-              {/* Quick stats */}
-              {bR !== undefined && (
-                <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
-                  <span style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#3a4d6e' }}>
-                    Exp <span style={{ color: bR >= 0 ? '#00ffaa' : '#ff2244' }}>
-                      {bR >= 0 ? '+' : ''}{bR?.toFixed(0)}%
-                    </span>
-                  </span>
-                  {cal.source === 'calculated' && (
-                    <span style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                      color: '#00ffaa66' }}>✓ REAL DATA</span>
-                  )}
-                </div>
-              )}
-
-              {inst.reason && (
-                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#7a90b8', marginTop: 6, lineHeight: 1.6 }}>
-                  {inst.reason?.slice(0, 100)}
-                </div>
-              )}
-
-              {/* Expanded */}
-              {isExp && (
-                <div style={{ marginTop: 12, paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                  {cal.base_returns && (
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                        letterSpacing: 2, color: '#4f8ef7', marginBottom: 8 }}>
-                        REGIME RETURNS · {cal.source === 'calculated' ? '✓ REAL' : '~ EST'}
-                      </div>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {Object.entries(cal.base_returns).map(([r, ret]) => (
-                          <div key={r} style={{ padding: '4px 8px', borderRadius: 6,
-                            fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                            background: 'rgba(255,255,255,0.03)',
-                            border: `1px solid ${r === regime ? c + '55' : 'rgba(255,255,255,0.06)'}`,
-                            color: r === regime ? c : '#3a4d6e' }}>
-                            {r.replace('_',' ')}: <b>{ret >= 0 ? '+' : ''}{ret}%</b>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {inst.valuation && Object.keys(inst.valuation).length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                        letterSpacing: 2, color: '#00c8e0', marginBottom: 8 }}>VALUATION</div>
-                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                        {[
-                          { l: 'P/E', v: inst.valuation.pe?.toFixed(1) },
-                          { l: 'P/B', v: inst.valuation.pb?.toFixed(1) },
-                          { l: 'ROE', v: inst.valuation.roe ? `${inst.valuation.roe.toFixed(0)}%` : null },
-                          { l: 'D/E', v: inst.valuation.de?.toFixed(2) },
-                        ].filter(x => x.v).map(x => (
-                          <div key={x.l} style={{ background: 'rgba(255,255,255,0.03)',
-                            borderRadius: 7, padding: '5px 8px',
-                            border: '1px solid rgba(255,255,255,0.06)' }}>
-                            <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                              color: '#3a4d6e' }}>{x.l}</div>
-                            <div style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace',
-                              color: '#e8f0fe', fontWeight: 700 }}>{x.v}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        ) : list.map((inst, idx) => (
+          <StockCard key={inst.tk} inst={inst} idx={idx}
+            regime={regime} snap={snap}/>
+        ))}
       </div>
     </div>
   );
@@ -733,132 +1037,158 @@ function PortfolioTab({ data }) {
   const snap   = data?.snap  || {};
   const usdInr = snap.usdInr || 86;
   const prices = snap.usPrices || {};
+  const analysis = data?.analysis || {};
 
   const holdings = [
-    { tk: 'NET',  qty: 1.066992, avg: 208.62, name: 'Cloudflare',          sector: 'Cloud Security' },
-    { tk: 'CEG',  qty: 0.714253, avg: 310.43, name: 'Constellation Energy', sector: 'Nuclear Energy' },
-    { tk: 'GLNG', qty: 3.489692, avg: 50.93,  name: 'Golar LNG',            sector: 'LNG Shipping'  },
+    { tk:'NET',  qty:1.066992, avg:208.62, name:'Cloudflare',          sector:'Cloud Security' },
+    { tk:'CEG',  qty:0.714253, avg:310.43, name:'Constellation Energy', sector:'Nuclear Energy' },
+    { tk:'GLNG', qty:3.489692, avg:50.93,  name:'Golar LNG',            sector:'LNG Shipping'   },
   ];
 
-  const totalInvested = holdings.reduce((s, h) => s + h.avg * h.qty * usdInr, 0);
-  const totalCurrent  = holdings.reduce((s, h) => s + (prices[h.tk] || h.avg) * h.qty * usdInr, 0);
-  const totalPL       = totalCurrent - totalInvested;
-  const totalPct      = totalInvested > 0 ? (totalPL / totalInvested * 100) : 0;
-  const pos           = totalPL >= 0;
+  const totalInv  = holdings.reduce((s,h) => s + h.avg * h.qty * usdInr, 0);
+  const totalCurr = holdings.reduce((s,h) => s + (prices[h.tk]||h.avg) * h.qty * usdInr, 0);
+  const totalPL   = totalCurr - totalInv;
+  const totalPct  = totalInv > 0 ? (totalPL / totalInv * 100) : 0;
+  const pos       = totalPL >= 0;
+  const portColor = pos ? '#00ffcc' : '#ff2d78';
 
-  // Build mini chart data (simulated from holdings)
-  const chartPts = holdings.map(h => {
+  // Dimension bars for each holding
+  const dimData = holdings.map(h => {
     const curr = prices[h.tk] || h.avg;
-    return ((curr - h.avg) / h.avg * 100);
+    return { pct: (curr - h.avg) / h.avg * 100, tk: h.tk };
   });
 
   return (
     <div style={{ padding: '14px 14px 90px' }}>
+      <DimOrbs regime={pos ? 'SOFT_BULL' : 'SOFT_BEAR'}/>
 
-      {/* Total P&L Card */}
-      <div style={{ background: pos
-        ? 'radial-gradient(ellipse at top, rgba(0,255,170,0.08), transparent)'
-        : 'radial-gradient(ellipse at top, rgba(255,34,68,0.08), transparent)',
-        border: `1px solid ${pos ? 'rgba(0,255,170,0.2)' : 'rgba(255,34,68,0.2)'}`,
-        borderRadius: 20, padding: '20px', marginBottom: 10,
-        boxShadow: `0 0 30px ${pos ? 'rgba(0,255,170,0.1)' : 'rgba(255,34,68,0.1)'}` }}>
-        <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-          letterSpacing: 3, color: '#7a90b8', marginBottom: 8 }}>PORTFOLIO PERFORMANCE</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      {/* Total P&L */}
+      <Panel glow={portColor} animate style={{ position: 'relative', zIndex: 1,
+        background: `radial-gradient(ellipse at top left, ${portColor}10, transparent 60%), rgba(13,17,40,0.7)` }}>
+        <Label color={portColor}>PORTFOLIO DIMENSION</Label>
+        <div style={{ display: 'flex', justifyContent: 'space-between',
+          alignItems: 'flex-end', marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 32, fontWeight: 900, fontFamily: 'JetBrains Mono, monospace',
-              color: pos ? '#00ffaa' : '#ff2244',
-              textShadow: `0 0 20px ${pos ? '#00ffaa' : '#ff2244'}` }}>
-              {pos ? '+' : ''}₹{(Math.abs(totalPL)/1000).toFixed(1)}K
+            <div style={{ fontSize: 34, fontWeight: 700, color: portColor,
+              fontFamily: 'JetBrains Mono, monospace',
+              textShadow: `0 0 30px ${portColor}` }}>
+              {pos ? '+' : '-'}₹{(Math.abs(totalPL)/1000).toFixed(2)}K
             </div>
-            <div style={{ fontSize: 14, fontFamily: 'JetBrains Mono, monospace',
-              color: pos ? '#00ffaa88' : '#ff224488', marginTop: 2 }}>
-              {pos ? '▲' : '▼'} {Math.abs(totalPct).toFixed(2)}%
+            <div style={{ fontSize: 14, color: `${portColor}88`,
+              fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>
+              {pos ? '▲' : '▼'} {Math.abs(totalPct).toFixed(2)}% all time
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-              color: '#3a4d6e' }}>INVESTED</div>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
-              color: '#7a90b8' }}>₹{(totalInvested/1000).toFixed(1)}K</div>
-            <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-              color: '#3a4d6e', marginTop: 4 }}>USD/INR {usdInr.toFixed(2)}</div>
+            <div style={{ fontSize: 8, color: '#4a5680',
+              fontFamily: 'JetBrains Mono, monospace' }}>INVESTED</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#7a90b8',
+              fontFamily: 'JetBrains Mono, monospace' }}>
+              ₹{(totalInv/1000).toFixed(1)}K
+            </div>
+            <div style={{ fontSize: 8, color: '#4a5680', marginTop: 4,
+              fontFamily: 'JetBrains Mono, monospace' }}>
+              USD/INR {usdInr.toFixed(2)}
+            </div>
           </div>
         </div>
 
-        {/* Bar chart */}
-        <div style={{ display: 'flex', gap: 6, marginTop: 16, alignItems: 'flex-end', height: 40 }}>
-          {holdings.map((h, i) => {
-            const curr = prices[h.tk] || h.avg;
-            const pct  = (curr - h.avg) / h.avg * 100;
-            const ht   = Math.min(40, Math.max(4, Math.abs(pct) * 3));
-            const c    = pct >= 0 ? '#00ffaa' : '#ff2244';
+        {/* Dimensional bar chart */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 60 }}>
+          {dimData.map(({ tk, pct }) => {
+            const c = pct >= 0 ? '#00ffcc' : '#ff2d78';
+            const h = Math.max(6, Math.min(54, Math.abs(pct) * 4));
             return (
-              <div key={h.tk} style={{ flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', gap: 4 }}>
-                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                  color: c }}>{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</div>
-                <div style={{ width: '100%', height: ht, background: c,
-                  borderRadius: 3, boxShadow: `0 0 8px ${c}66`,
-                  transition: 'height 0.8s ease' }}/>
-                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#7a90b8' }}>{h.tk}</div>
+              <div key={tk} style={{ flex: 1, display: 'flex',
+                flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace', color: c,
+                  textShadow: `0 0 8px ${c}` }}>
+                  {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                </div>
+                <div style={{ width: '100%', height: h,
+                  background: `linear-gradient(180deg, ${c}, ${c}44)`,
+                  borderRadius: '4px 4px 0 0',
+                  boxShadow: `0 0 15px ${c}66`,
+                  transition: 'height 1s cubic-bezier(0.4,0,0.2,1)' }}/>
+                <div style={{ fontSize: 9, color: '#7a90b8',
+                  fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{tk}</div>
               </div>
             );
           })}
         </div>
-      </div>
+      </Panel>
 
-      {/* Individual holdings */}
+      {/* Individual holdings with AI chat */}
       {holdings.map(h => {
         const curr  = prices[h.tk] || h.avg;
         const plUSD = (curr - h.avg) * h.qty;
         const plINR = plUSD * usdInr;
         const plPct = (curr - h.avg) / h.avg * 100;
         const pos   = plINR >= 0;
-        const c     = pos ? '#00ffaa' : '#ff2244';
+        const c     = pos ? '#00ffcc' : '#ff2d78';
+        const [chatOpen, setChatOpen] = useState(false);
 
         return (
-          <Glass key={h.tk} glow={pos ? 'rgba(0,255,170,0.06)' : 'rgba(255,34,68,0.06)'}
-            style={{ border: `1px solid ${c}18` }}>
+          <Panel key={h.tk} glow={c} animate
+            style={{ border: `1px solid ${c}15`, position: 'relative', zIndex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between',
               alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: '#e8f0fe',
-                  fontFamily: 'JetBrains Mono, monospace' }}>{h.tk}</div>
-                <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#7a90b8' }}>{h.name}</div>
-                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-                  color: '#3a4d6e', marginTop: 2 }}>{h.sector}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#e0e8ff',
+                  fontFamily: 'Space Grotesk' }}>{h.tk}</div>
+                <div style={{ fontSize: 9, color: '#4a5680',
+                  fontFamily: 'JetBrains Mono, monospace' }}>{h.name}</div>
+                <div style={{ fontSize: 8, color: '#1e2545',
+                  fontFamily: 'JetBrains Mono, monospace', marginTop: 1 }}>{h.sector}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 22, fontWeight: 900, fontFamily: 'JetBrains Mono, monospace',
-                  color: c, textShadow: `0 0 15px ${c}` }}>
-                  {pos ? '+' : ''}₹{Math.round(Math.abs(plINR)).toLocaleString('en-IN')}
+                <div style={{ fontSize: 20, fontWeight: 700, color: c,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  textShadow: `0 0 20px ${c}` }}>
+                  {pos?'+':'-'}₹{Math.round(Math.abs(plINR)).toLocaleString('en-IN')}
                 </div>
-                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: c }}>
-                  {pos ? '▲' : '▼'} {Math.abs(plPct).toFixed(2)}%
+                <div style={{ fontSize: 10, color: c,
+                  fontFamily: 'JetBrains Mono, monospace' }}>
+                  {pos?'▲':'▼'} {Math.abs(plPct).toFixed(2)}%
                 </div>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
-              gap: 8, marginTop: 12 }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns:'repeat(3,1fr)',
+              gap:8, marginTop:12, marginBottom: 10 }}>
               {[
-                { l: 'QTY',    v: h.qty.toFixed(3) },
-                { l: 'AVG',    v: `$${h.avg}` },
-                { l: 'CURRENT',v: `$${curr.toFixed(2)}` },
+                { l:'QTY',    v: h.qty.toFixed(3) },
+                { l:'AVG',    v: `$${h.avg}` },
+                { l:'NOW',    v: `$${curr.toFixed(2)}` },
               ].map(x => (
-                <div key={x.l} style={{ background: 'rgba(255,255,255,0.03)',
-                  borderRadius: 8, padding: '8px 10px',
-                  border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#3a4d6e', letterSpacing: 1 }}>{x.l}</div>
-                  <div style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace',
-                    color: '#e8f0fe', fontWeight: 700, marginTop: 2 }}>{x.v}</div>
+                <div key={x.l} style={{ background:'rgba(255,255,255,0.03)',
+                  borderRadius:8, padding:'7px 10px',
+                  border:'1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ fontSize:7, color:'#4a5680',
+                    fontFamily:'JetBrains Mono, monospace', letterSpacing:1 }}>{x.l}</div>
+                  <div style={{ fontSize:12, fontWeight:700,
+                    fontFamily:'JetBrains Mono, monospace', color:'#e0e8ff',
+                    marginTop:2 }}>{x.v}</div>
                 </div>
               ))}
             </div>
-          </Glass>
+
+            <button onClick={() => setChatOpen(!chatOpen)} style={{
+              width: '100%', padding: '8px', borderRadius: 10,
+              border: `1px solid ${chatOpen ? '#7b2fff' : 'rgba(123,47,255,0.2)'}`,
+              background: chatOpen ? 'rgba(123,47,255,0.15)' : 'rgba(123,47,255,0.05)',
+              color: chatOpen ? '#c4a8ff' : '#7b2fff',
+              fontSize: 10, fontWeight: 700, fontFamily: 'Space Grotesk',
+              transition: 'all 0.2s',
+            }}>
+              {chatOpen ? '× Close AI' : `⚡ Ask AI about ${h.tk}`}
+            </button>
+
+            {chatOpen && (
+              <StockChat symbol={h.tk} data={data}
+                onClose={() => setChatOpen(false)}/>
+            )}
+          </Panel>
         );
       })}
     </div>
@@ -873,9 +1203,9 @@ function SettingsTab({ refresh, ts }) {
   const trigger = async (type = 'morning') => {
     setBusy(true); setMsg('');
     try {
-      const r = await fetch(`${API}/api/refresh${type === 'recalibrate' ? '?type=recalibrate' : ''}`);
+      const r = await fetch(`${API}/api/refresh${type==='recalibrate'?'?type=recalibrate':''}`);
       const d = await r.json();
-      setMsg(d.ok ? '✅ Started — check back in 5 min' : `❌ ${d.error}`);
+      setMsg(d.ok ? '✅ Started' : `❌ ${d.error}`);
       if (d.ok) setTimeout(() => refresh(true), 8000);
     } catch(e) { setMsg(`❌ ${e.message}`); }
     finally { setBusy(false); }
@@ -883,55 +1213,76 @@ function SettingsTab({ refresh, ts }) {
 
   return (
     <div style={{ padding: '14px 14px 90px' }}>
-      <Glass>
-        <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-          letterSpacing: 3, color: '#4f8ef7', marginBottom: 14 }}>MANUAL REFRESH</div>
+      <Panel glow="#7b2fff">
+        <Label color="#7b2fff">MANUAL CONTROL</Label>
         <button onClick={() => trigger()} disabled={busy} style={{
-          width: '100%', padding: 14, borderRadius: 12, border: 'none',
-          background: busy ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #00ffaa, #4f8ef7)',
-          color: busy ? '#3a4d6e' : '#050810', fontWeight: 900,
-          fontSize: 13, fontFamily: 'JetBrains Mono, monospace', cursor: 'pointer',
-          marginBottom: 8, boxShadow: busy ? 'none' : '0 0 20px rgba(0,255,170,0.3)',
-          transition: 'all 0.2s' }}>
+          width:'100%', padding:14, borderRadius:12, border:'none',
+          background: busy ? 'rgba(255,255,255,0.04)'
+            : 'linear-gradient(135deg, #00ffcc, #00b4ff)',
+          color: busy ? '#4a5680' : '#03050f',
+          fontWeight:900, fontSize:13, fontFamily:'Space Grotesk',
+          marginBottom:8,
+          boxShadow: busy ? 'none' : '0 0 30px rgba(0,255,204,0.3)',
+          transition:'all 0.2s' }}>
           {busy ? '⏳ RUNNING...' : '⚡ REFRESH NOW'}
         </button>
         <button onClick={() => trigger('recalibrate')} disabled={busy} style={{
-          width: '100%', padding: 12, borderRadius: 12, cursor: 'pointer',
-          border: '1px solid rgba(255,204,0,0.3)', background: 'rgba(255,204,0,0.06)',
-          color: '#ffcc00', fontWeight: 700, fontSize: 11,
-          fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 }}>
+          width:'100%', padding:11, borderRadius:12, marginBottom:8,
+          border:'1px solid rgba(255,204,0,0.25)',
+          background:'rgba(255,204,0,0.06)',
+          color:'#ffcc00', fontWeight:700, fontSize:10,
+          fontFamily:'Space Grotesk' }}>
           🔄 FULL RECALIBRATION (20 min)
         </button>
-        {msg && <div style={{ padding: '10px 12px', borderRadius: 8, fontSize: 10,
-          fontFamily: 'JetBrains Mono, monospace',
-          background: msg.startsWith('✅') ? 'rgba(0,255,170,0.08)' : 'rgba(255,34,68,0.08)',
-          border: `1px solid ${msg.startsWith('✅') ? 'rgba(0,255,170,0.2)' : 'rgba(255,34,68,0.2)'}`,
-          color: msg.startsWith('✅') ? '#00ffaa' : '#ff2244' }}>{msg}</div>}
-        {ts && <div style={{ marginTop: 8, fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-          color: '#3a4d6e' }}>Last fetch: {ts.toLocaleTimeString('en-IN')}</div>}
-      </Glass>
+        {msg && <div style={{ padding:'10px 12px', borderRadius:8, fontSize:10,
+          fontFamily:'JetBrains Mono, monospace',
+          background: msg.startsWith('✅') ? 'rgba(0,255,204,0.08)' : 'rgba(255,45,120,0.08)',
+          border:`1px solid ${msg.startsWith('✅') ? 'rgba(0,255,204,0.2)' : 'rgba(255,45,120,0.2)'}`,
+          color: msg.startsWith('✅') ? '#00ffcc' : '#ff2d78' }}>{msg}</div>}
+        {ts && <div style={{ marginTop:8, fontSize:8, color:'#4a5680',
+          fontFamily:'JetBrains Mono, monospace' }}>
+          Last fetch: {ts.toLocaleTimeString('en-IN')}</div>}
+      </Panel>
 
-      <Glass>
-        <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-          letterSpacing: 3, color: '#7a90b8', marginBottom: 12 }}>SYSTEM STATUS</div>
+      {PARKED.questions.length > 0 && (
+        <Panel glow="#ffcc00">
+          <Label color="#ffcc00">📌 PARKED QUESTIONS ({PARKED.questions.length})</Label>
+          <div style={{ fontSize: 9, color: '#4a5680', marginBottom: 10,
+            fontFamily: 'JetBrains Mono, monospace' }}>
+            Questions the AI couldn't answer — debate material
+          </div>
+          {PARKED.questions.map((q, i) => (
+            <div key={i} style={{ padding:'8px 10px', marginBottom:4, borderRadius:8,
+              background:'rgba(255,204,0,0.06)',
+              border:'1px solid rgba(255,204,0,0.12)' }}>
+              <div style={{ fontSize:8, color:'#ffcc00',
+                fontFamily:'JetBrains Mono, monospace' }}>{q.symbol} · {q.ts?.slice(11,16)}</div>
+              <div style={{ fontSize:9, color:'#7a90b8', marginTop:2,
+                fontFamily:'Space Grotesk' }}>{q.question}</div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      <Panel>
+        <Label>SYSTEM STATUS</Label>
         {[
-          { l: 'Backend',     v: 'Render · Singapore',    c: '#00ffaa' },
-          { l: 'Storage',     v: 'Backblaze B2 · 1TB',    c: '#00ffaa' },
-          { l: 'Database',    v: 'Firebase — DELETED',     c: '#ff2244' },
-          { l: 'Scoring',     v: 'Python GARCH Engine',    c: '#4f8ef7' },
-          { l: 'News',        v: '196 stocks · 15min cycle',c: '#4f8ef7' },
-          { l: 'Schedule',    v: '6× daily auto-refresh',  c: '#7a90b8' },
-          { l: 'Monthly cost',v: '~$20 fixed',             c: '#00ffaa' },
+          { l:'Backend',     v:'Render · Singapore',     c:'#00ffcc' },
+          { l:'Storage',     v:'Backblaze B2 · 1TB',     c:'#00ffcc' },
+          { l:'Firebase',    v:'DELETED',                 c:'#ff2d78' },
+          { l:'Scoring',     v:'Python GARCH Engine',     c:'#00b4ff' },
+          { l:'News',        v:'196 stocks · 15min',      c:'#00b4ff' },
+          { l:'Cost',        v:'~$20/month fixed',        c:'#00ffcc' },
         ].map(x => (
-          <div key={x.l} style={{ display: 'flex', justifyContent: 'space-between',
-            padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-            <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-              color: '#7a90b8' }}>{x.l}</span>
-            <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace',
-              color: x.c, fontWeight: 700 }}>{x.v}</span>
+          <div key={x.l} style={{ display:'flex', justifyContent:'space-between',
+            padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
+            <span style={{ fontSize:9, color:'#4a5680',
+              fontFamily:'JetBrains Mono, monospace' }}>{x.l}</span>
+            <span style={{ fontSize:9, color:x.c, fontWeight:700,
+              fontFamily:'JetBrains Mono, monospace' }}>{x.v}</span>
           </div>
         ))}
-      </Glass>
+      </Panel>
     </div>
   );
 }
@@ -939,35 +1290,35 @@ function SettingsTab({ refresh, ts }) {
 // ── BOTTOM NAV ────────────────────────────────────────────────
 function Nav({ tab, setTab }) {
   const tabs = [
-    { id: 'dashboard',     icon: '◈', label: 'RADAR' },
-    { id: 'opportunities', icon: '◎', label: 'PICKS' },
-    { id: 'portfolio',     icon: '◇', label: 'PORT' },
-    { id: 'settings',      icon: '⊙', label: 'SYS' },
+    { id:'dashboard',     icon:'◈', label:'RADAR' },
+    { id:'opportunities', icon:'◎', label:'PICKS' },
+    { id:'portfolio',     icon:'◇', label:'PORT'  },
+    { id:'settings',      icon:'⊙', label:'SYS'   },
   ];
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-      width: '100%', maxWidth: 480, zIndex: 100,
-      background: 'rgba(5,8,16,0.9)', backdropFilter: 'blur(30px)',
-      borderTop: '1px solid rgba(255,255,255,0.05)',
-      display: 'flex', justifyContent: 'space-around',
-      padding: '10px 0 max(12px,env(safe-area-inset-bottom))' }}>
+    <div style={{ position:'fixed', bottom:0, left:'50%',
+      transform:'translateX(-50%)', width:'100%', maxWidth:480, zIndex:200,
+      background:'rgba(3,5,15,0.92)', backdropFilter:'blur(30px)',
+      borderTop:'1px solid rgba(123,47,255,0.12)',
+      display:'flex', justifyContent:'space-around',
+      padding:'10px 0 max(12px,env(safe-area-inset-bottom))' }}>
       {tabs.map(t => {
         const active = tab === t.id;
         return (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: 4, background: 'none', border: 'none', cursor: 'pointer',
-            padding: '4px 16px', borderRadius: 10,
+            display:'flex', flexDirection:'column', alignItems:'center',
+            gap:3, background:'none', border:'none',
+            padding:'4px 16px', borderRadius:10,
           }}>
-            <span style={{ fontSize: 18, lineHeight: 1,
-              color: active ? '#00ffaa' : '#3a4d6e',
-              textShadow: active ? '0 0 10px #00ffaa' : 'none',
+            <span style={{ fontSize:18, lineHeight:1,
+              color: active ? '#00ffcc' : '#4a5680',
+              textShadow: active ? '0 0 15px #00ffcc' : 'none',
               transform: active ? 'scale(1.2)' : 'scale(1)',
-              transition: 'all 0.2s ease' }}>{t.icon}</span>
-            <span style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-              letterSpacing: 1, fontWeight: 900,
-              color: active ? '#00ffaa' : '#3a4d6e',
-              transition: 'color 0.2s' }}>{t.label}</span>
+              transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)' }}>{t.icon}</span>
+            <span style={{ fontSize:7, fontFamily:'JetBrains Mono, monospace',
+              letterSpacing:2, fontWeight:700,
+              color: active ? '#00ffcc' : '#4a5680',
+              transition:'color 0.2s' }}>{t.label}</span>
           </button>
         );
       })}
@@ -982,61 +1333,76 @@ export default function App() {
 
   if (loading && !data) {
     return (
-      <div style={{ minHeight: '100vh', background: '#050810', display: 'flex',
-        flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-        <div style={{ fontSize: 48, animation: 'spin 3s linear infinite' }}>◉</div>
-        <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
-          color: '#00ffaa', letterSpacing: 4, textShadow: '0 0 20px #00ffaa' }}>
-          INVESTMENT RADAR PRO
+      <div style={{ minHeight:'100vh', background:'#03050f', display:'flex',
+        flexDirection:'column', alignItems:'center', justifyContent:'center', gap:20 }}>
+        <div style={{ position:'relative', width:80, height:80 }}>
+          <div style={{ position:'absolute', inset:0, borderRadius:'50%',
+            border:'2px solid #00ffcc22', animation:'pulse-ring 1.5s ease-out infinite' }}/>
+          <div style={{ position:'absolute', inset:10, borderRadius:'50%',
+            border:'2px solid #7b2fff44', animation:'pulse-ring 1.5s ease-out infinite 0.3s' }}/>
+          <div style={{ position:'absolute', inset:20, borderRadius:'50%',
+            border:'2px solid #00b4ff66', animation:'pulse-ring 1.5s ease-out infinite 0.6s' }}/>
+          <div style={{ position:'absolute', inset:30, borderRadius:'50%',
+            background:'#00ffcc', boxShadow:'0 0 20px #00ffcc' }}/>
         </div>
-        <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace',
-          color: '#3a4d6e', letterSpacing: 2 }}>INITIALIZING...</div>
+        <div style={{ fontSize:10, fontFamily:'JetBrains Mono, monospace',
+          color:'#00ffcc', letterSpacing:4,
+          textShadow:'0 0 20px #00ffcc' }}>INVESTMENT RADAR PRO</div>
+        <div style={{ fontSize:8, color:'#4a5680', letterSpacing:3,
+          fontFamily:'JetBrains Mono, monospace' }}>
+          TRAVERSING DIMENSIONS...
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#050810', color: '#e8f0fe',
-      maxWidth: 480, margin: '0 auto', position: 'relative',
-      backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(0,255,170,0.03) 0%, transparent 60%)',
-    }}>
+    <div style={{ minHeight:'100vh', background:'#03050f', color:'#e0e8ff',
+      maxWidth:480, margin:'0 auto', position:'relative',
+      backgroundImage:'radial-gradient(ellipse at 50% 0%, rgba(123,47,255,0.06) 0%, transparent 60%)' }}>
+
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 50,
-        background: 'rgba(5,8,16,0.9)', backdropFilter: 'blur(30px)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-        padding: '12px 16px 10px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ position:'sticky', top:0, zIndex:100,
+        background:'rgba(3,5,15,0.92)', backdropFilter:'blur(30px)',
+        borderBottom:'1px solid rgba(123,47,255,0.1)',
+        padding:'12px 16px 10px',
+        display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: 2,
-            fontFamily: 'JetBrains Mono, monospace', color: '#e8f0fe' }}>
-            <span style={{ color: '#00ffaa', textShadow: '0 0 10px #00ffaa' }}>◈</span>{' '}
-            INVESTMENT RADAR
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ width:8, height:8, borderRadius:'50%', background:'#00ffcc',
+              boxShadow:'0 0 10px #00ffcc', flexShrink:0 }}/>
+            <span style={{ fontSize:14, fontWeight:700, letterSpacing:2,
+              fontFamily:'Space Grotesk, sans-serif', color:'#e0e8ff' }}>
+              INVESTMENT RADAR
+            </span>
           </div>
-          <div style={{ fontSize: 7, fontFamily: 'JetBrains Mono, monospace',
-            color: '#3a4d6e', letterSpacing: 2 }}>
-            PRO · {data?.snap?.regime || '—'} · v6
+          <div style={{ fontSize:7, fontFamily:'JetBrains Mono, monospace',
+            color:'#4a5680', letterSpacing:2, marginTop:2, marginLeft:16 }}>
+            PRO · {data?.snap?.regime || '—'} · 5D
           </div>
         </div>
         <button onClick={() => refresh()} disabled={loading}
-          style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(0,255,170,0.2)',
-            background: loading ? 'transparent' : 'rgba(0,255,170,0.08)',
-            color: loading ? '#3a4d6e' : '#00ffaa',
-            fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
-            fontSize: 10, cursor: 'pointer', letterSpacing: 1,
-            transition: 'all 0.2s' }}>
+          style={{ padding:'7px 14px', borderRadius:8,
+            border:'1px solid rgba(0,255,204,0.2)',
+            background: loading ? 'transparent' : 'rgba(0,255,204,0.08)',
+            color: loading ? '#4a5680' : '#00ffcc',
+            fontFamily:'JetBrains Mono, monospace', fontWeight:700,
+            fontSize:10, letterSpacing:1,
+            boxShadow: loading ? 'none' : '0 0 15px rgba(0,255,204,0.2)',
+            transition:'all 0.2s' }}>
           {loading ? '...' : '↺'}
         </button>
       </div>
 
       {/* Content */}
-      <div style={{ overflowY: 'auto', paddingBottom: 70 }}>
-        {tab === 'dashboard'     && <DashboardTab     data={data} />}
-        {tab === 'opportunities' && <OpportunitiesTab data={data} />}
-        {tab === 'portfolio'     && <PortfolioTab     data={data} />}
-        {tab === 'settings'      && <SettingsTab      refresh={refresh} ts={ts} />}
+      <div style={{ overflowY:'auto', paddingBottom:70 }}>
+        {tab==='dashboard'     && <DashboardTab     data={data}/>}
+        {tab==='opportunities' && <OpportunitiesTab data={data}/>}
+        {tab==='portfolio'     && <PortfolioTab     data={data}/>}
+        {tab==='settings'      && <SettingsTab      refresh={refresh} ts={ts}/>}
       </div>
 
-      <Nav tab={tab} setTab={setTab} />
+      <Nav tab={tab} setTab={setTab}/>
     </div>
   );
 }

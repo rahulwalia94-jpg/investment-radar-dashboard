@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import React from 'react';
 import './App.css';
 import { IntroAnimation } from './intro.jsx';
+import { ScoreBreakdown } from './ScoreBreakdown.jsx';
 import { speak, stopSpeaking } from './voice.js';
 import { generateStockBrief, buildSpokenBrief } from './stockbrief.js';
 import { RegimeWorld, RegimeSelector } from './regimeworld.jsx';
@@ -381,21 +382,9 @@ function StockCard({ inst, regime, snap, scores }) {
         </div>
       )}
 
-      {/* Calibration */}
-      {expanded && cal.base_returns && (
-        <div style={{ marginTop:10 }}>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-            {Object.entries(cal.base_returns).map(([r,v]) => (
-              <div key={r} style={{ padding:'3px 7px', borderRadius:6, fontSize:8,
-                fontFamily:'JetBrains Mono, monospace',
-                background: r===regime?`${c}12`:'rgba(255,255,255,0.03)',
-                border:`1px solid ${r===regime?`${c}44`:'rgba(255,255,255,0.06)'}`,
-                color: r===regime?c:'#3a5070' }}>
-                {r.replace('_',' ')}: {v>=0?'+':''}{v}%
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* 5-Layer Score Breakdown */}
+      {expanded && (
+        <ScoreBreakdown scoreData={scores?.[inst.tk]}/>
       )}
 
       {/* Stock AI Chat */}

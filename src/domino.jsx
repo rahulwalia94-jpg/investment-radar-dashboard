@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 
+const PORTFOLIO = new Set(['NET', 'CEG', 'GLNG']);
+
 export function DominoChains({ chains, scores }) {
   if (!chains || chains.length === 0) return null;
   const c = scores || {};
@@ -79,8 +81,12 @@ export function DominoChains({ chains, scores }) {
                       <circle cx={x} cy="25" r="16" fill="rgba(0,255,204,0.1)"
                         stroke="#00ffcc44" strokeWidth="1.5"
                         style={{ animation: 'domino-glow 2s ease infinite', animationDelay: `${i*0.3}s` }}/>
-                      <text x={x} y="22" textAnchor="middle" fill="#00ffcc"
+                      <text x={x} y="22" textAnchor="middle"
+                        fill={PORTFOLIO.has(p.stock) ? '#ffcc00' : '#00ffcc'}
                         fontSize="7" fontWeight="700" fontFamily="JetBrains Mono">{p.stock}</text>
+                      {PORTFOLIO.has(p.stock) && (
+                        <text x={x} y="10" textAnchor="middle" fill="#ffcc00" fontSize="6">★</text>
+                      )}
                       <text x={x} y="32" textAnchor="middle" fill="#00ffcc88"
                         fontSize="6" fontFamily="JetBrains Mono">+{p.adj}</text>
                     </g>
@@ -98,8 +104,12 @@ export function DominoChains({ chains, scores }) {
                       <circle cx={x} cy="55" r="16" fill="rgba(255,34,68,0.1)"
                         stroke="#ff224444" strokeWidth="1.5"
                         style={{ animation: 'domino-glow 2s ease infinite', animationDelay: `${i*0.3+0.5}s` }}/>
-                      <text x={x} y="52" textAnchor="middle" fill="#ff2244"
+                      <text x={x} y="52" textAnchor="middle"
+                        fill={PORTFOLIO.has(p.stock) ? '#ffcc00' : '#ff2244'}
                         fontSize="7" fontWeight="700" fontFamily="JetBrains Mono">{p.stock}</text>
+                      {PORTFOLIO.has(p.stock) && (
+                        <text x={x} y="40" textAnchor="middle" fill="#ffcc00" fontSize="6">★</text>
+                      )}
                       <text x={x} y="62" textAnchor="middle" fill="#ff224488"
                         fontSize="6" fontFamily="JetBrains Mono">{p.adj}</text>
                     </g>

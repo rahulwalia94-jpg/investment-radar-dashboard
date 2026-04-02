@@ -3,6 +3,10 @@ import React from 'react';
 import './App.css';
 import { IntroAnimation } from './intro.jsx';
 import { ScoreBreakdown } from './ScoreBreakdown.jsx';
+import { WaterfallChart } from './WaterfallChart.jsx';
+import { RiskReturnMatrix } from './RiskReturnMatrix.jsx';
+import { NeuralBond } from './NeuralBond.jsx';
+import { DominoTimeline } from './DominoTimeline.jsx';
 import { speak, stopSpeaking } from './voice.js';
 import { generateStockBrief, buildSpokenBrief } from './stockbrief.js';
 import { RegimeWorld, RegimeSelector } from './regimeworld.jsx';
@@ -382,9 +386,12 @@ function StockCard({ inst, regime, snap, scores }) {
         </div>
       )}
 
-      {/* 5-Layer Score Breakdown */}
+      {/* 5-Layer Score Breakdown + Waterfall */}
       {expanded && (
-        <ScoreBreakdown scoreData={scores?.[inst.tk]}/>
+        <>
+          <ScoreBreakdown scoreData={scores?.[inst.tk]}/>
+          <WaterfallChart scoreData={scores?.[inst.tk]}/>
+        </>
       )}
 
       {/* Stock AI Chat */}
@@ -669,6 +676,24 @@ function DashboardTab({ data }) {
             ))}
           </div>
         </Panel>
+
+      {/* RADAR — Risk Return Matrix */}
+      <Panel glow="#00b4ff">
+        <Label color="#00b4ff">RISK — RETURN MATRIX · ALL STOCKS</Label>
+        <RiskReturnMatrix scores={scores} regime={regime}/>
+      </Panel>
+
+      {/* RADAR — Neural Bond Network */}
+      <Panel glow="#7b2fff">
+        <Label color="#7b2fff">NEURAL BOND · CORRELATION NETWORK</Label>
+        <NeuralBond scores={scores} regime={regime}/>
+      </Panel>
+
+      {/* RADAR — Domino Timeline */}
+      <Panel glow="#ff8c00">
+        <Label color="#ff8c00">DOMINO CHAIN TIMELINE</Label>
+        <DominoTimeline chains={analysis.chains} snap={snap}/>
+      </Panel>
       )}
     </div>
   );

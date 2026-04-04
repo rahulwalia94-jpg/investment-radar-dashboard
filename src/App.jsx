@@ -1147,11 +1147,7 @@ function SettingsTab({ data, refresh, ts }) {
   // ── STATUS CHECKS ────────────────────────────────────────────
   const totalScored  = Object.keys(scores).length;
   const garchOk      = totalScored > 100;
-  const regimeOk     = snap.regime !== undefined && snap.regime !== 'SIDEWAYS'
-                     || Object.keys(regimePeriods||{}).length > 100;
-  // Regime: use scoring result presence as proxy
-  const regimePeriods= {}; // not exposed in snap — use regime string instead
-  const regimeOk2    = snap.regime && snap.regime !== undefined;
+  const regimeOk     = !!snap.regime;
   const finbertCount = Object.values(scores).filter(s => s?.layers?.news?.source === 'finbert').length;
   const finbertOk    = finbertCount > 0;
   const newsCount    = Object.values(scores).filter(s => (s?.layers?.news?.articles||0) > 0).length;
@@ -1173,8 +1169,8 @@ function SettingsTab({ data, refresh, ts }) {
         ? `6-layer model running | Regime: ${snap.regime} | Source: ${Object.values(scores).find(s=>s?.layers?.quant?.source)?.layers?.quant?.source||'?'}`
         : 'Needs price history in B2' },
     { label:'REGIME PERIODS',
-      ok: regimeOk2,
-      detail: regimeOk2
+      ok: regimeOk,
+      detail: regimeOk
         ? `Current: ${snap.regime} | 18yr Nifty 50 + SP500 regime classification`
         : 'Regime detection not running' },
     { label:'FINBERT NEWS',

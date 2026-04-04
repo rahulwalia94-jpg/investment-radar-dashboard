@@ -315,10 +315,12 @@ function StockCard({ inst, regime, snap, scores }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const c = inst.score>=75?'#00ffcc':inst.score>=60?'#00b4ff':inst.score>=45?'#ffcc00':'#ff2244';
-  const cal = inst.calibration || {};
-  const bR = cal.base_returns?.[regime];
-  const sig = inst.signal||'';
-  const sigC = sig.includes('BUY')||sig.includes('ADD')?'#00ffcc':sig.includes('AVOID')||sig.includes('SELL')?'#ff2244':'#ffcc00';
+  const cal = inst.calibration || inst.layers?.quant?.calibration || {};
+  const bR  = cal.base_returns?.[regime];
+  const sig = inst.layers?.quant?.source === 'calculated' ? (inst.signal||'HOLD') : (inst.signal||'');
+  const sigC= sig.includes('BUY')||sig.includes('ADD')?'#00ffcc':sig.includes('AVOID')||sig.includes('SELL')?'#ff2244':'#ffcc00';
+  const newsSource = inst.layers?.news?.source;
+  const garchSrc   = inst.layers?.quant?.source;
 
   return (
     <Panel glow={chatOpen?c:undefined} style={{ marginBottom:8, padding:'14px 16px' }}>
@@ -702,7 +704,7 @@ function DashboardTab({ data }) {
 // ── OPPORTUNITIES TAB ─────────────────────────────────────────
 function OpportunitiesTab({ data }) {
   const [search, setSearch] = useState('');
-  const [minS,   setMinS]   = useState(50);
+  const [minS,   setMinS]   = useState(40);
   const [country,setCountry]= useState('ALL');
   const snap    = data?.snap     || {};
   const analysis= data?.analysis || {};

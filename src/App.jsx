@@ -917,6 +917,8 @@ function PortfolioTab({ data }) {
             </button>
             {chatOpen && <StockChat symbol={h.tk} snap={snap} scores={scores} onClose={()=>setChatOpen(false)}/>}
           </Panel>
+        );
+      })}
 
       {/* Monte Carlo — 90 day simulation */}
       {analysis.scores?.monte_carlo && (
@@ -1123,8 +1125,6 @@ function PortfolioTab({ data }) {
           )}
         </Panel>
       )}
-        );
-      })}
     </div>
   );
 }

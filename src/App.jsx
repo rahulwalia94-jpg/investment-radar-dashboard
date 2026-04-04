@@ -49,7 +49,7 @@ function useData() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  return { data, loading, error, ts, refresh };
+  return { data, loading, error, ts, refresh, waking };
 }
 
 // speakStock now uses the voice.js engine
@@ -1398,7 +1398,7 @@ function Nav({ tab, setTab }) {
 
 // ── APP ──────────────────────────────────────────────────────
 function App() {
-  const { data, loading, error, refresh, ts } = useData();
+  const { data, loading, error, refresh, ts, waking } = useData();
   const [tab, setTab] = useState('dashboard');
   const snap = data?.snap || {};
 

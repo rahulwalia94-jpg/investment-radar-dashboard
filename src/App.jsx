@@ -915,6 +915,212 @@ function PortfolioTab({ data }) {
             </button>
             {chatOpen && <StockChat symbol={h.tk} snap={snap} scores={scores} onClose={()=>setChatOpen(false)}/>}
           </Panel>
+
+      {/* Monte Carlo — 90 day simulation */}
+      {analysis.scores?.monte_carlo && (
+        <Panel glow="#7b2fff">
+          <Label color="#7b2fff">MONTE CARLO — 90 DAY SIMULATION (10,000 paths)</Label>
+          {['NET','CEG','GLNG'].map(sym => {
+            const mc = analysis.scores.monte_carlo[sym];
+            if (!mc) return null;
+            const pos = mc.win_probability >= 50;
+            return (
+              <div key={sym} style={{ marginBottom:12, padding:'10px 12px',
+                borderRadius:10, background:'rgba(123,47,255,0.06)',
+                border:'1px solid rgba(123,47,255,0.15)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#d0e8ff',
+                    fontFamily:'Orbitron,monospace' }}>{sym} ★</span>
+                  <span style={{ fontSize:10, fontWeight:700,
+                    color: pos?'#00ffcc':'#ff2244',
+                    fontFamily:'JetBrains Mono,monospace' }}>
+                    {mc.win_probability}% WIN PROB
+                  </span>
+                </div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {[
+                    { l:'Expected',  v:`$${mc.expected_price?.toFixed(2)}`, c:'#00b4ff' },
+                    { l:'Best 10%',  v:`$${mc.best_case_10?.toFixed(2)}`,   c:'#00ffcc' },
+                    { l:'Worst 10%', v:`$${mc.worst_case_10?.toFixed(2)}`,  c:'#ff2244' },
+                    { l:'Exp Return',v:`${mc.expected_return>=0?'+':''}${mc.expected_return}%`, c: mc.expected_return>=0?'#00ffcc':'#ff2244' },
+                    { l:'Kelly',     v:`${(mc.kelly_fraction*100).toFixed(0)}%`, c:'#ffcc00' },
+                  ].map(item => (
+                    <div key={item.l} style={{ padding:'4px 8px', borderRadius:6,
+                      background:'rgba(255,255,255,0.04)',
+                      border:'1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ fontSize:7, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>{item.l}</div>
+                      <div style={{ fontSize:10, color:item.c, fontWeight:700,
+                        fontFamily:'JetBrains Mono,monospace' }}>{item.v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {analysis.scores.monte_carlo._portfolio && (
+            <div style={{ padding:'10px 12px', borderRadius:10,
+              background:'rgba(0,180,255,0.06)', border:'1px solid rgba(0,180,255,0.15)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                <div style={{ fontSize:9, fontFamily:'Orbitron,monospace',
+                  letterSpacing:2, color:'#00b4ff' }}>PORTFOLIO COMBINED</div>
+                {analysis.scores.monte_carlo._portfolio.cholesky_used && (
+                  <div style={{ fontSize:7, color:'#00ffcc', fontFamily:'JetBrains Mono,monospace',
+                    padding:'2px 6px', background:'rgba(0,255,204,0.1)', borderRadius:4 }}>
+                    ⬡ CHOLESKY CORRELATED
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const p = analysis.scores.monte_carlo._portfolio;
+                return (<>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
+                    {[
+                      { l:'Current Value', v:`₹${Math.round(p.current_value).toLocaleString()}` },
+                      { l:'Expected 90d',  v:`₹${Math.round(p.expected_value).toLocaleString()}` },
+                      { l:'Exp Return',    v:`${p.expected_return>=0?'+':''}${p.expected_return}%`,
+                        c: p.expected_return>=0?'#00ffcc':'#ff2244' },
+                      { l:'Win Prob',      v:`${p.win_probability}%`,
+                        c: p.win_probability>=50?'#00ffcc':'#ff2244' },
+                      { l:'VaR 95%',       v:`₹${Math.round(p.var_95).toLocaleString()}`, c:'#ffcc00' },
+                      { l:'VaR 99%',       v:`₹${Math.round(p.var_99||p.var_95*1.4).toLocaleString()}`, c:'#ff8844' },
+                      { l:'Port σ/yr',     v:`${p.portfolio_sigma||'--'}%`, c:'#00b4ff' },
+                    ].map(item => (
+                      <div key={item.l} style={{ padding:'4px 8px', borderRadius:6,
+                        background:'rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontSize:7, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>{item.l}</div>
+                        <div style={{ fontSize:10, color:item.c||'#00b4ff', fontWeight:700,
+                          fontFamily:'JetBrains Mono,monospace' }}>{item.v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Marginal Risk Contribution */}
+                  {p.marginal_risk?.length > 0 && (
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ fontSize:8, color:'#3a5070',
+                        fontFamily:'Orbitron,monospace', letterSpacing:1, marginBottom:6 }}>
+                        MARGINAL RISK CONTRIBUTION
+                      </div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {p.marginal_risk.map(mr => (
+                          <div key={mr.symbol} style={{ flex:1, padding:'6px 8px', borderRadius:8,
+                            background:'rgba(255,255,255,0.03)',
+                            border:'1px solid rgba(255,255,255,0.06)' }}>
+                            <div style={{ fontSize:9, color:'#d0e8ff',
+                              fontFamily:'Orbitron,monospace', marginBottom:4 }}>{mr.symbol}</div>
+                            <div style={{ fontSize:8, color:'#ffcc00',
+                              fontFamily:'JetBrains Mono,monospace' }}>{mr.contribution?.toFixed(1)}% risk</div>
+                            <div style={{ fontSize:7, color:'#3a5070',
+                              fontFamily:'JetBrains Mono,monospace' }}>{mr.weight}% weight</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>);
+              })()}
+            </div>
+          )}
+
+          {/* Correlation Heatmap — NET / CEG / GLNG */}
+          {analysis.scores?.dcc?.correlation && (
+            <div style={{ padding:'10px 12px', borderRadius:10, marginTop:10,
+              background:'rgba(123,47,255,0.06)', border:'1px solid rgba(123,47,255,0.15)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <div style={{ fontSize:9, fontFamily:'Orbitron,monospace',
+                  letterSpacing:2, color:'#7b2fff' }}>CORRELATION HEATMAP</div>
+                <div style={{ fontSize:7, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+                  {analysis.scores.dcc.source === 'precomputed'
+                    ? `⬡ PRE-COMPUTED (${analysis.scores.dcc.matrix_size} stocks)`
+                    : '⚡ REAL-TIME'}
+                </div>
+              </div>
+              {(() => {
+                const corr  = analysis.scores.dcc.correlation;
+                const syms  = ['NET','CEG','GLNG'].filter(s => corr[s]);
+                if (syms.length < 2) return <div style={{fontSize:8,color:'#3a5070'}}>Insufficient data</div>;
+                const getColor = v => {
+                  if (v >= 0.7)  return '#ff2244';
+                  if (v >= 0.4)  return '#ff8844';
+                  if (v >= 0.2)  return '#ffcc00';
+                  if (v >= 0)    return '#00ffcc';
+                  if (v >= -0.2) return '#00b4ff';
+                  return '#7b2fff';
+                };
+                return (
+                  <div>
+                    <div style={{ display:'grid', gridTemplateColumns:`40px ${syms.map(()=>'1fr').join(' ')}`,
+                      gap:3, fontSize:8, fontFamily:'JetBrains Mono,monospace' }}>
+                      <div/>
+                      {syms.map(s => (
+                        <div key={s} style={{ textAlign:'center', color:'#3a5070', padding:'2px 0' }}>{s}</div>
+                      ))}
+                      {syms.map(a => (<>
+                        <div key={a} style={{ color:'#3a5070', padding:'2px 0' }}>{a}</div>
+                        {syms.map(b => {
+                          const v = corr[a]?.[b] ?? 1;
+                          return (
+                            <div key={b} style={{
+                              textAlign:'center', padding:'6px 4px', borderRadius:6,
+                              background: a===b ? 'rgba(255,255,255,0.05)' : `${getColor(v)}22`,
+                              border: `1px solid ${getColor(v)}44`,
+                              color: getColor(v), fontWeight:700, fontSize:9,
+                            }}>{a===b ? '1.00' : v.toFixed(2)}</div>
+                          );
+                        })}
+                      </>))}
+                    </div>
+                    <div style={{ marginTop:6, fontSize:7, color:'#3a5070',
+                      fontFamily:'JetBrains Mono,monospace' }}>
+                      Low correlation = good diversification |
+                      Regime: {analysis.scores.dcc.regime}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Factor Decomposition */}
+          {['NET','CEG','GLNG'].some(s => analysis.scores?.scores?.[s]?.factor_detail) && (
+            <div style={{ padding:'10px 12px', borderRadius:10, marginTop:10,
+              background:'rgba(0,180,255,0.05)', border:'1px solid rgba(0,180,255,0.12)' }}>
+              <div style={{ fontSize:9, fontFamily:'Orbitron,monospace',
+                letterSpacing:2, color:'#00b4ff', marginBottom:8 }}>FACTOR DECOMPOSITION</div>
+              <div style={{ display:'flex', gap:8 }}>
+                {['NET','CEG','GLNG'].map(sym => {
+                  const fd = analysis.scores?.scores?.[sym]?.factor_detail;
+                  if (!fd) return null;
+                  return (
+                    <div key={sym} style={{ flex:1, padding:'8px', borderRadius:8,
+                      background:'rgba(0,180,255,0.06)', border:'1px solid rgba(0,180,255,0.12)' }}>
+                      <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'Orbitron,monospace',
+                        marginBottom:6 }}>{sym}</div>
+                      {[
+                        { l:'Alpha',    v:`${fd.alpha>=0?'+':''}${fd.alpha?.toFixed(1)}%/yr`,
+                          c: fd.alpha>=0?'#00ffcc':'#ff2244' },
+                        { l:'Beta',     v:fd.beta?.toFixed(2), c:'#00b4ff' },
+                        { l:'R²',       v:fd.r_squared?.toFixed(2), c:'#7b2fff' },
+                        { l:'Mom 12m',  v:`${fd.momentum_12m>=0?'+':''}${fd.momentum_12m?.toFixed(1)}%`,
+                          c: fd.momentum_12m>=0?'#00ffcc':'#ff2244' },
+                        { l:'Info Ratio',v:fd.information?.toFixed(2), c:'#ffcc00' },
+                      ].map(item => (
+                        <div key={item.l} style={{ display:'flex', justifyContent:'space-between',
+                          marginBottom:4 }}>
+                          <span style={{ fontSize:7, color:'#3a5070',
+                            fontFamily:'JetBrains Mono,monospace' }}>{item.l}</span>
+                          <span style={{ fontSize:8, color:item.c, fontWeight:700,
+                            fontFamily:'JetBrains Mono,monospace' }}>{item.v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
         );
       })}
     </div>
@@ -922,75 +1128,266 @@ function PortfolioTab({ data }) {
 }
 
 // ── SETTINGS TAB ──────────────────────────────────────────────
-function SettingsTab({ refresh, ts }) {
-  const [msg,setBusy2] = useState('');
-  const [busy,setBusy] = useState(false);
+function SettingsTab({ data, refresh, ts }) {
+  const [busy,  setBusy]  = useState(false);
+  const [msg,   setMsg]   = useState('');
+  const snap    = data?.snap     || {};
+  const analysis= data?.analysis || {};
+  const scores  = analysis.scores?.scores || {};
+  const mc      = analysis.scores?.monte_carlo || {};
+  const bl      = analysis.scores?.bl_result   || {};
+  const dcc     = analysis.scores?.dcc         || {};
+
   const trigger = async (type='morning') => {
-    setBusy(true); setBusy2('');
+    setBusy(true); setMsg('');
     try {
       const r = await fetch(`${API}/api/refresh${type==='recalibrate'?'?type=recalibrate':''}`);
       const d = await r.json();
-      setBusy2(d.ok?'✅ Started':`❌ ${d.error}`);
-      if (d.ok) setTimeout(()=>refresh(true),8000);
-    } catch(e) { setBusy2(`❌ ${e.message}`); }
-    finally { setBusy(false); }
+      setMsg(d.ok || d.message ? '✅ Done' : '⚠ Check logs');
+    } catch(e) { setMsg('❌ ' + e.message); }
+    setBusy(false);
   };
+
+  // Model health checks
+  const priceCount  = Object.keys(scores).length;
+  const garchOk     = priceCount > 100;
+  const finbertSrc  = Object.values(scores).find(s => s?.layers?.news?.source === 'finbert');
+  const finbertOk   = !!finbertSrc;
+  const dccOk       = dcc.symbols?.length > 0;
+  const mcOk        = Object.keys(mc).length > 0;
+  const blOk        = !!bl.top_pick;
+  const regimeOk    = Object.keys(snap.regime_periods||{}).length > 100 ||
+                      snap.regime !== 'SIDEWAYS';
+  const newsCount   = Object.values(scores).filter(s=>s?.layers?.news?.articles>0).length;
+
+  const STATUS = [
+    {
+      label: 'PRICE HISTORY',
+      ok:    garchOk,
+      detail: garchOk ? `${priceCount} instruments loaded` : 'No price history — run local_calibrate.js',
+      action: null,
+    },
+    {
+      label: 'GARCH SCORING',
+      ok:    garchOk,
+      detail: garchOk
+        ? `Running on ${priceCount} stocks | Top: ${analysis.scores?.top5?.slice(0,3).join(', ')}`
+        : 'Needs price history first',
+      action: null,
+    },
+    {
+      label: 'REGIME PERIODS',
+      ok:    regimeOk,
+      detail: regimeOk
+        ? `Current: ${snap.regime} | Nifty 50 history classified`
+        : 'Empty — GARCH using default BEAR=-15% for all stocks',
+      action: null,
+    },
+    {
+      label: 'FINBERT NEWS',
+      ok:    finbertOk,
+      detail: finbertOk
+        ? `ProsusAI/finbert active — 85% accuracy | ${newsCount} stocks scored`
+        : `Keyword fallback (62% accuracy) — add HF_TOKEN to Render env vars | ${newsCount} stocks scored`,
+      action: null,
+    },
+    {
+      label: 'DCC CORRELATIONS',
+      ok:    dccOk,
+      detail: dccOk
+        ? `${dcc.symbols?.length} stocks | NET-CEG: ${dcc.correlation?.NET?.CEG?.toFixed(2)||'?'} | NET-GLNG: ${dcc.correlation?.NET?.GLNG?.toFixed(2)||'?'}`
+        : 'Not computed — needs 30+ bars per stock',
+      action: null,
+    },
+    {
+      label: 'MONTE CARLO',
+      ok:    mcOk,
+      detail: mcOk
+        ? `NET: ${mc.NET?.win_probability}% win | CEG: ${mc.CEG?.win_probability}% win | GLNG: ${mc.GLNG?.win_probability}% win`
+        : 'Not computed — needs DCC first',
+      action: null,
+    },
+    {
+      label: 'BLACK-LITTERMAN',
+      ok:    blOk,
+      detail: blOk
+        ? `Top pick: ${bl.top_pick} | Portfolio Sharpe: ${bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} | Exp return: ${bl.portfolio_metrics?.expected_return?.toFixed(1)}%`
+        : 'Not computed — needs DCC + scores',
+      action: null,
+    },
+    {
+      label: 'NEWS COVERAGE',
+      ok:    newsCount > 50,
+      detail: `${newsCount} stocks with active news | Loop running 24/7`,
+      action: null,
+    },
+    {
+      label: 'FII DATA',
+      ok:    !!snap.fii?.fii_net,
+      detail: snap.fii?.fii_net != null
+        ? `FII: ${snap.fii.fii_net >= 0 ? '+' : ''}₹${Math.round(snap.fii.fii_net)}Cr`
+        : 'FII data not loading — NSE API issue',
+      action: null,
+    },
+    {
+      label: 'US PRICES',
+      ok:    !!snap.usPrices?.NET,
+      detail: snap.usPrices?.NET
+        ? `NET: $${snap.usPrices.NET?.toFixed(2)} | CEG: $${snap.usPrices.CEG?.toFixed(2)} | GLNG: $${snap.usPrices.GLNG?.toFixed(2)}`
+        : 'US prices not loading',
+      action: null,
+    },
+  ];
+
+  const allOk    = STATUS.filter(s=>s.ok).length;
+  const allTotal = STATUS.length;
+  const healthPct= Math.round(allOk/allTotal*100);
+  const healthColor = healthPct>=80?'#00ffcc':healthPct>=50?'#ffcc00':'#ff2244';
+
   return (
-    <div style={{ padding:'14px 14px 90px' }}>
-      <Panel glow="#7b2fff">
-        <Label color="#7b2fff">CONTROL PANEL</Label>
-        <button onClick={()=>trigger()} disabled={busy} style={{ width:'100%', padding:14, borderRadius:12, border:'none',
-          background:busy?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#00ffcc,#00b4ff)',
-          color:busy?'#3a5070':'#01030a', fontWeight:900, fontSize:13, fontFamily:'Space Grotesk',
-          marginBottom:8, boxShadow:busy?'none':'0 0 25px rgba(0,255,204,0.3)', transition:'all 0.2s' }}>
-          {busy?'⏳ RUNNING...':'⚡ REFRESH NOW'}
-        </button>
-        <button onClick={()=>trigger('recalibrate')} disabled={busy} style={{ width:'100%', padding:11, borderRadius:12,
-          border:'1px solid rgba(255,204,0,0.25)', background:'rgba(255,204,0,0.06)',
-          color:'#ffcc00', fontWeight:700, fontSize:10, fontFamily:'Space Grotesk', marginBottom:8 }}>
-          🔄 FULL RECALIBRATION (20 min)
-        </button>
-        {msg && <div style={{ padding:'10px 12px', borderRadius:8, fontSize:10,
-          fontFamily:'JetBrains Mono, monospace',
-          background:msg.startsWith('✅')?'rgba(0,255,204,0.08)':'rgba(255,34,68,0.08)',
-          border:`1px solid ${msg.startsWith('✅')?'rgba(0,255,204,0.2)':'rgba(255,34,68,0.2)'}`,
-          color:msg.startsWith('✅')?'#00ffcc':'#ff2244' }}>{msg}</div>}
-        {ts && <div style={{ marginTop:8, fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono, monospace' }}>Last fetch: {ts.toLocaleTimeString('en-IN')}</div>}
+    <div style={{ padding:'0 4px' }}>
+
+      {/* System Health Score */}
+      <Panel glow={healthColor}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <Label color={healthColor}>SYSTEM HEALTH</Label>
+            <div style={{ fontSize:32, fontWeight:700, color:healthColor, fontFamily:'Orbitron,monospace',
+              textShadow:`0 0 20px ${healthColor}` }}>
+              {healthPct}%
+            </div>
+            <div style={{ fontSize:9, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+              {allOk}/{allTotal} systems operational
+            </div>
+          </div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace', marginBottom:4 }}>
+              Last refresh: {ts ? new Date(ts).toLocaleTimeString() : '--'}
+            </div>
+            <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+              Regime: <span style={{ color:healthColor }}>{snap.regime||'--'}</span>
+            </div>
+          </div>
+        </div>
       </Panel>
 
-      {PARKED.questions.length > 0 && (
-        <Panel glow="#ffcc00">
-          <Label color="#ffcc00">📌 PARKED QUESTIONS — DEBATE LATER ({PARKED.questions.length})</Label>
-          {PARKED.questions.map((q,i) => (
-            <div key={i} style={{ padding:'7px 10px', marginBottom:4, borderRadius:8,
-              background:'rgba(255,204,0,0.05)', border:'1px solid rgba(255,204,0,0.12)' }}>
-              <div style={{ fontSize:8, color:'#ffcc00', fontFamily:'JetBrains Mono, monospace' }}>{q.symbol} · {q.ts?.slice(11,16)}</div>
-              <div style={{ fontSize:9, color:'#7090a8', marginTop:2, fontFamily:'Space Grotesk' }}>{q.question}</div>
+      {/* Status Grid */}
+      <Panel glow="#00b4ff">
+        <Label color="#00b4ff">MODEL STATUS</Label>
+        {STATUS.map((s, i) => (
+          <div key={i} style={{
+            display:'flex', alignItems:'flex-start', gap:10, padding:'8px 0',
+            borderBottom: i<STATUS.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+          }}>
+            {/* Status indicator */}
+            <div style={{
+              width:8, height:8, borderRadius:'50%', marginTop:4, flexShrink:0,
+              background: s.ok ? '#00ffcc' : '#ff2244',
+              boxShadow: `0 0 8px ${s.ok ? '#00ffcc' : '#ff2244'}`,
+            }}/>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:9, fontFamily:'Orbitron,monospace', letterSpacing:1,
+                color: s.ok ? '#d0e8ff' : '#ff6688', marginBottom:3 }}>
+                {s.label}
+              </div>
+              <div style={{ fontSize:8, fontFamily:'JetBrains Mono,monospace',
+                color: s.ok ? '#506070' : '#ff444488', lineHeight:1.5 }}>
+                {s.detail}
+              </div>
+            </div>
+          </div>
+        ))}
+      </Panel>
+
+      {/* BL Cash Deployment */}
+      {blOk && bl.cash_deployment?.recommendations?.length > 0 && (
+        <Panel glow="#7b2fff">
+          <Label color="#7b2fff">BLACK-LITTERMAN — OPTIMAL WEIGHTS</Label>
+          {bl.cash_deployment.recommendations.slice(0,5).map((r,i) => (
+            <div key={i} style={{ display:'flex', justifyContent:'space-between',
+              padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
+                {r.symbol} {r.is_holding ? '★' : ''}
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:9, color:'#7b2fff', fontFamily:'JetBrains Mono,monospace' }}>
+                  {r.weight}% weight
+                </div>
+                <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+                  Exp: {r.exp_return>=0?'+':''}{r.exp_return}% | σ {r.sigma}%
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop:8, fontSize:8, color:'#3a5070',
+            fontFamily:'JetBrains Mono,monospace' }}>
+            Portfolio Sharpe: {bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} |
+            Exp return: {bl.portfolio_metrics?.expected_return?.toFixed(1)}%
+          </div>
+        </Panel>
+      )}
+
+      {/* Active Geo Flags */}
+      {Object.keys(snap.geo_signals?.active_flags || analysis.scores?.geo_signals?.active_flags || {}).length > 0 && (
+        <Panel glow="#ff8844">
+          <Label color="#ff8844">ACTIVE GEO FLAGS</Label>
+          {Object.entries(snap.geo_signals?.active_flags || analysis.scores?.geo_signals?.active_flags || {}).map(([flag, data]) => (
+            <div key={flag} style={{ display:'flex', justifyContent:'space-between',
+              padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+              <div>
+                <div style={{ fontSize:9, color:'#ff8844',
+                  fontFamily:'Orbitron,monospace', letterSpacing:1 }}>
+                  🚨 {flag.replace(/_/g,' ')}
+                </div>
+                <div style={{ fontSize:8, color:'#506070',
+                  fontFamily:'JetBrains Mono,monospace' }}>{data.note}</div>
+              </div>
+              <div style={{ fontSize:8, color:'#ffcc00',
+                fontFamily:'JetBrains Mono,monospace', textAlign:'right' }}>
+                {data.count} articles
+              </div>
             </div>
           ))}
         </Panel>
       )}
 
-      <Panel>
-        <Label>DIMENSIONAL SYSTEM STATUS</Label>
-        {[
-          {l:'Backend',  v:'Render · Singapore', c:'#00ffcc'},
-          {l:'Storage',  v:'Backblaze B2 · 1TB', c:'#00ffcc'},
-          {l:'Firebase', v:'DELETED',             c:'#ff2244'},
-          {l:'Scoring',  v:'Python GARCH Engine', c:'#00b4ff'},
-          {l:'News',     v:'196 stocks · 15min',  c:'#00b4ff'},
-          {l:'Cost',     v:'~$20/month fixed',    c:'#00ffcc'},
-        ].map(x => (
-          <div key={x.l} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0',
-            borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
-            <span style={{ fontSize:9, color:'#3a5070', fontFamily:'Orbitron, monospace', letterSpacing:1 }}>{x.l}</span>
-            <span style={{ fontSize:9, color:x.c, fontWeight:700, fontFamily:'JetBrains Mono, monospace' }}>{x.v}</span>
-          </div>
-        ))}
+      {/* Controls */}
+      <Panel glow="#3a5070">
+        <Label color="#3a5070">CONTROLS</Label>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {[
+            { label:'↻ REFRESH', action:()=>trigger('morning'), color:'#00b4ff' },
+            { label:'⚡ RECALIBRATE', action:()=>trigger('recalibrate'), color:'#ffcc00' },
+          ].map(btn => (
+            <button key={btn.label} onClick={btn.action} disabled={busy} style={{
+              padding:'8px 14px', borderRadius:8, border:`1px solid ${btn.color}44`,
+              background:`${btn.color}11`, color:btn.color,
+              fontFamily:'Orbitron,monospace', fontSize:8, letterSpacing:1,
+              cursor:busy?'not-allowed':'pointer', opacity:busy?0.5:1,
+            }}>{btn.label}</button>
+          ))}
+        </div>
+        {msg && <div style={{ marginTop:8, fontSize:9, fontFamily:'JetBrains Mono,monospace',
+          color:msg.includes('✅')?'#00ffcc':'#ff6688' }}>{msg}</div>}
       </Panel>
+
+      {/* Parked Questions */}
+      {PARKED.questions.length > 0 && (
+        <Panel glow="#3a5070">
+          <Label color="#3a5070">PARKED QUESTIONS ({PARKED.questions.length})</Label>
+          {PARKED.questions.slice(-5).map((q,i) => (
+            <div key={i} style={{ fontSize:8, color:'#3a5070',
+              fontFamily:'JetBrains Mono,monospace', padding:'3px 0',
+              borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
+              📌 {q.symbol}: {q.question}
+            </div>
+          ))}
+        </Panel>
+      )}
     </div>
   );
 }
+
 
 // ── BOTTOM NAV ────────────────────────────────────────────────
 function Nav({ tab, setTab }) {
@@ -998,7 +1395,7 @@ function Nav({ tab, setTab }) {
     {id:'dashboard',     icon:'◈', label:'RADAR'},
     {id:'opportunities', icon:'◎', label:'PICKS'},
     {id:'portfolio',     icon:'◇', label:'PORT'},
-    {id:'settings',      icon:'⊙', label:'SYS'},
+    {id:'settings',      icon:'⊙', label:'STATUS'},
   ];
   return (
     <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',

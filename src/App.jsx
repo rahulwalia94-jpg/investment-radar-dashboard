@@ -1366,3 +1366,66 @@ function SettingsTab({ data, refresh, ts }) {
 }
 
 
+
+// ── NAV ───────────────────────────────────────────────────────
+function Nav({ tab, setTab }) {
+  const tabs = [
+    { id:'dashboard',     icon:'◈', label:'RADAR'  },
+    { id:'opportunities', icon:'◆', label:'PICKS'  },
+    { id:'portfolio',     icon:'◉', label:'PORT'   },
+    { id:'settings',      icon:'⬡', label:'STATUS' },
+  ];
+  return (
+    <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
+      width:'100%', maxWidth:480, background:'rgba(1,3,10,0.96)',
+      backdropFilter:'blur(24px)', borderTop:'1px solid rgba(100,180,255,0.08)',
+      display:'flex', zIndex:100 }}>
+      {tabs.map(t => {
+        const active = tab === t.id;
+        return (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flex:1, padding:'10px 4px 8px', border:'none', background:'transparent',
+            cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+          }}>
+            <span style={{ fontSize:16, color: active ? '#00ffcc' : '#3a5070',
+              filter: active ? 'drop-shadow(0 0 6px #00ffcc)' : 'none',
+              transition:'all 0.2s' }}>{t.icon}</span>
+            <span style={{ fontSize:7, letterSpacing:1, fontFamily:'Orbitron,monospace',
+              color: active ? '#00ffcc' : '#3a5070' }}>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+
+// ── APP ──────────────────────────────────────────────────────
+function App() {
+  const { data, loading, error, refresh, ts } = useData();
+  const [tab, setTab] = useState('dashboard');
+  const snap = data?.snap || {};
+
+  if (loading && !data) return (
+    <div style={{ background:'#01030a', minHeight:'100vh', display:'flex',
+      alignItems:'center', justifyContent:'center', color:'#3a5070',
+      fontFamily:'Orbitron,monospace', fontSize:12, letterSpacing:2 }}>
+      LOADING...
+    </div>
+  );
+
+  return (
+    <div style={{ background:'#01030a', minHeight:'100vh', maxWidth:480,
+      margin:'0 auto', position:'relative' }}>
+      <div style={{ paddingBottom:70 }}>
+        {tab==='dashboard'    && <DashboardTab    data={data}/>}
+        {tab==='opportunities' && <OpportunitiesTab data={data}/>}
+        {tab==='portfolio'    && <PortfolioTab    data={data}/>}
+        {tab==='settings'     && <SettingsTab     data={data} refresh={refresh} ts={ts}/>}
+      </div>
+      <Nav tab={tab} setTab={setTab}/>
+    </div>
+  );
+}
+
+export default App;

@@ -32,15 +32,22 @@ function useData() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
   const [ts,      setTs]      = useState(null);
+  const [waking,  setWaking]  = useState(false);
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      // Ping health to wake Render if cold
+      if (!silent) {
+        setWaking(true);
+        try { await fetch(`${API}/health`).catch(()=>{}); } catch(e) {}
+        setWaking(false);
+      }
       const r = await fetch(`${API}/api/snapshot`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setData(await r.json()); setTs(new Date()); setError(null);
     } catch(e) { setError(e.message); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setWaking(false); }
   }, []);
 
   useEffect(() => {

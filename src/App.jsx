@@ -1367,6 +1367,22 @@ function SettingsTab({ data, refresh, ts }) {
         </Panel>
       )}
 
+      {/* Raw Data Debug */}
+      <Panel glow="#1a3050">
+        <Label color="#1a3050">RAW DATA DEBUG</Label>
+        <div style={{ fontSize:7, fontFamily:'JetBrains Mono,monospace', color:'#3a5070', lineHeight:1.8 }}>
+          <div>snap.regime: <span style={{color:'#00b4ff'}}>{snap.regime||'undefined'}</span></div>
+          <div>snap.usPrices.NET: <span style={{color:'#00b4ff'}}>{snap.usPrices?.NET||'undefined'}</span></div>
+          <div>snap.fii.fii_net: <span style={{color:'#00b4ff'}}>{snap.fii?.fii_net||'undefined'}</span></div>
+          <div>scoring keys: <span style={{color:'#00b4ff'}}>{Object.keys(scoring).join(', ')||'empty'}</span></div>
+          <div>scores count: <span style={{color:'#00b4ff'}}>{Object.keys(scores).length}</span></div>
+          <div>mc keys: <span style={{color:'#00b4ff'}}>{Object.keys(mc).join(', ')||'empty'}</span></div>
+          <div>bl.top_pick: <span style={{color:'#00b4ff'}}>{bl.top_pick||'null'}</span></div>
+          <div>dcc.symbols count: <span style={{color:'#00b4ff'}}>{dcc.symbols?.length||0}</span></div>
+          <div>analysis keys: <span style={{color:'#00b4ff'}}>{Object.keys(analysis).join(', ')||'empty'}</span></div>
+        </div>
+      </Panel>
+
       {/* Controls */}
       <Panel glow="#3a5070">
         <Label color="#3a5070">CONTROLS</Label>
@@ -1539,7 +1555,7 @@ export default function App() {
         {tab==='dashboard'     && <DashboardTab     data={data}/>}
         {tab==='opportunities' && <OpportunitiesTab data={data}/>}
         {tab==='portfolio'     && <PortfolioTab     data={data}/>}
-        {tab==='settings'      && <SettingsTab      refresh={refresh} ts={ts}/>}
+        {tab==='settings'      && <SettingsTab      data={data} refresh={refresh} ts={ts}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>

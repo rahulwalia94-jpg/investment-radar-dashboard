@@ -678,6 +678,7 @@ function DashboardTab({ data }) {
             ))}
           </div>
         </Panel>
+      )}
 
       {/* RADAR — Risk Return Matrix */}
       <Panel glow="#00b4ff">
@@ -696,7 +697,6 @@ function DashboardTab({ data }) {
         <Label color="#ff8c00">DOMINO CHAIN TIMELINE</Label>
         <DominoTimeline chains={analysis.chains} snap={snap}/>
       </Panel>
-      )}
     </div>
   );
 }

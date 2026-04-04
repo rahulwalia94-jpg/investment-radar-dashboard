@@ -1133,12 +1133,14 @@ function PortfolioTab({ data }) {
 function SettingsTab({ data, refresh, ts }) {
   const [busy,  setBusy]  = useState(false);
   const [msg,   setMsg]   = useState('');
-  const snap    = data?.snap     || {};
-  const analysis= data?.analysis || {};
-  const scores  = analysis.scores?.scores || {};
-  const mc      = analysis.scores?.monte_carlo || {};
-  const bl      = analysis.scores?.bl_result   || {};
-  const dcc     = analysis.scores?.dcc         || {};
+  const snap      = data?.snap     || {};
+  const analysis  = data?.analysis || {};
+  const scoring   = analysis.scores || {};         // scoringResult
+  const scores    = scoring.scores  || {};         // per-stock objects
+  const mc        = scoring.monte_carlo || {};     // MC results
+  const bl        = scoring.bl_result   || {};     // BL results
+  const dcc       = scoring.dcc         || {};     // DCC results
+  const geoFlags  = scoring.geo_signals?.active_flags || {};
 
   const trigger = async (type='morning') => {
     setBusy(true); setMsg('');
@@ -1158,9 +1160,10 @@ function SettingsTab({ data, refresh, ts }) {
   const dccOk       = dcc.symbols?.length > 0;
   const mcOk        = Object.keys(mc).length > 0;
   const blOk        = !!bl.top_pick;
-  const regimeOk    = Object.keys(snap.regime_periods||{}).length > 100 ||
-                      snap.regime !== 'SIDEWAYS';
-  const newsCount   = Object.values(scores).filter(s=>s?.layers?.news?.articles>0).length;
+  const regimeOk    = snap.regime !== 'SIDEWAYS' ||
+                      Object.keys(scoring).length > 0;
+  const newsCount   = Object.values(scores).filter(s => s?.layers?.news?.articles > 0).length;
+  const totalScored = Object.keys(scores).length;
 
   const STATUS = [
     {
@@ -1181,8 +1184,8 @@ function SettingsTab({ data, refresh, ts }) {
       label: 'REGIME PERIODS',
       ok:    regimeOk,
       detail: regimeOk
-        ? `Current: ${snap.regime} | Nifty 50 history classified`
-        : 'Empty — GARCH using default BEAR=-15% for all stocks',
+        ? `Current: ${snap.regime} | 18yr Nifty + SP500 regime periods active`
+        : `Regime: ${snap.regime} — verify Nifty/SP500 history in B2`,
       action: null,
     },
     {
@@ -1213,8 +1216,8 @@ function SettingsTab({ data, refresh, ts }) {
       label: 'BLACK-LITTERMAN',
       ok:    blOk,
       detail: blOk
-        ? `Top pick: ${bl.top_pick} | Portfolio Sharpe: ${bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} | Exp return: ${bl.portfolio_metrics?.expected_return?.toFixed(1)}%`
-        : 'Not computed — needs DCC + scores',
+        ? `Top pick: ${bl.top_pick} | Sharpe: ${bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} | Exp: ${bl.portfolio_metrics?.expected_return?.toFixed(1)}%`
+        : `Not computed yet | BL needs DCC matrix`,
       action: null,
     },
     {
@@ -1302,10 +1305,21 @@ function SettingsTab({ data, refresh, ts }) {
       </Panel>
 
       {/* BL Cash Deployment */}
-      {blOk && bl.cash_deployment?.recommendations?.length > 0 && (
+      {(blOk || bl.optimal_weights) && (
         <Panel glow="#7b2fff">
           <Label color="#7b2fff">BLACK-LITTERMAN — OPTIMAL WEIGHTS</Label>
-          {bl.cash_deployment.recommendations.slice(0,5).map((r,i) => (
+          {Object.entries(bl.optimal_weights||{}).slice(0,8).map(([sym, wt], i) => (
+            <div key={sym} style={{ display:'flex', justifyContent:'space-between',
+              padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
+                {sym} {['NET','CEG','GLNG'].includes(sym) ? '★' : ''}
+              </div>
+              <div style={{ fontSize:9, color:'#7b2fff', fontFamily:'JetBrains Mono,monospace', fontWeight:700 }}>
+                {wt}%
+              </div>
+            </div>
+          ))}
+          {false && bl.cash_deployment?.recommendations?.slice(0,5).map((r,i) => (
             <div key={i} style={{ display:'flex', justifyContent:'space-between',
               padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
               <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
@@ -1330,10 +1344,10 @@ function SettingsTab({ data, refresh, ts }) {
       )}
 
       {/* Active Geo Flags */}
-      {Object.keys(snap.geo_signals?.active_flags || analysis.scores?.geo_signals?.active_flags || {}).length > 0 && (
+      {Object.keys(geoFlags).length > 0 && (
         <Panel glow="#ff8844">
           <Label color="#ff8844">ACTIVE GEO FLAGS</Label>
-          {Object.entries(snap.geo_signals?.active_flags || analysis.scores?.geo_signals?.active_flags || {}).map(([flag, data]) => (
+          {Object.entries(geoFlags).map(([flag, data]) => (
             <div key={flag} style={{ display:'flex', justifyContent:'space-between',
               padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
               <div>

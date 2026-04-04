@@ -101,3 +101,20 @@ html, body, #root { height: 100%; background: var(--void); color: var(--text); f
 
 button { font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
 input  { font-family: 'JetBrains Mono', monospace; }
+
+@keyframes radarPulse {
+  0%, 100% { transform: scale(1); opacity: 0.2; }
+  50%       { transform: scale(1.2); opacity: 0.8; }
+}
+@keyframes radarPulse2 {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50%       { transform: scale(1.18); opacity: 0.7; }
+}
+@keyframes radarPulse3 {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50%       { transform: scale(1.12); opacity: 0.9; }
+}
+@keyframes radarBeat {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1.0; }
+}

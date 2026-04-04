@@ -1404,9 +1404,40 @@ function App() {
 
   if (loading && !data) return (
     <div style={{ background:'#01030a', minHeight:'100vh', display:'flex',
-      alignItems:'center', justifyContent:'center', color:'#3a5070',
-      fontFamily:'Orbitron,monospace', fontSize:12, letterSpacing:2 }}>
-      LOADING...
+      flexDirection:'column', alignItems:'center', justifyContent:'center', gap:20 }}>
+
+      {/* Heartbeat pulse rings */}
+      <div style={{ position:'relative', width:100, height:100 }}>
+        <div style={{ position:'absolute', inset:0, borderRadius:'50%',
+          border:'1px solid #00ffcc',
+          animation:'radarPulse 2s ease-in-out infinite' }}/>
+        <div style={{ position:'absolute', inset:10, borderRadius:'50%',
+          border:'1px solid #00b4ff',
+          animation:'radarPulse2 2s ease-in-out infinite 0.4s' }}/>
+        <div style={{ position:'absolute', inset:20, borderRadius:'50%',
+          border:'1px solid #7b2fff',
+          animation:'radarPulse3 2s ease-in-out infinite 0.8s' }}/>
+        <div style={{ position:'absolute', inset:0, display:'flex',
+          alignItems:'center', justifyContent:'center' }}>
+          <div style={{ fontSize:24, color:'#00ffcc',
+            animation:'radarBeat 1.5s ease-in-out infinite' }}>◈</div>
+        </div>
+      </div>
+
+      <div style={{ fontFamily:'Orbitron,monospace', fontSize:11,
+        letterSpacing:4, color:'#00ffcc',
+        animation:'radarBeat 2s ease-in-out infinite' }}>
+        INVESTMENT RADAR
+      </div>
+
+      <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:8,
+        color:'#3a5070', textAlign:'center', lineHeight:2 }}>
+        {waking ? '⚡ Waking server...' : '◌ Connecting...'}<br/>
+        <span style={{ fontSize:7, color:'#1a2535' }}>
+          {API.replace('https://','').slice(0,35)}
+        </span>
+      </div>
+
     </div>
   );
 

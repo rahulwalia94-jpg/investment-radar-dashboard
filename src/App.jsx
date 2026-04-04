@@ -1131,434 +1131,238 @@ function PortfolioTab({ data }) {
 
 // ── SETTINGS TAB ──────────────────────────────────────────────
 function SettingsTab({ data, refresh, ts }) {
-  const [busy,  setBusy]  = useState(false);
-  const [msg,   setMsg]   = useState('');
-  const snap      = data?.snap     || {};
-  const analysis  = data?.analysis || {};
-  const scoring   = analysis.scores || {};         // scoringResult
-  const scores    = scoring.scores  || {};         // per-stock objects
-  const mc        = scoring.monte_carlo || {};     // MC results
-  const bl        = scoring.bl_result   || {};     // BL results
-  const dcc       = scoring.dcc         || {};     // DCC results
-  const geoFlags  = scoring.geo_signals?.active_flags || {};
+  const [busy, setBusy] = useState(false);
+  const [msg,  setMsg ] = useState('');
 
-  const trigger = async (type='morning') => {
-    setBusy(true); setMsg('');
+  // ── DATA PATHS (guaranteed schema from v2 backend) ──────────
+  const snap     = data?.snap     || {};
+  const analysis = data?.analysis || {};
+  const scoring  = analysis.scores || {};         // ScoringResult
+  const scores   = scoring.scores  || {};         // per-stock StockScore objects
+  const mc       = scoring.monte_carlo || {};
+  const bl       = scoring.bl_result   || {};
+  const dcc      = scoring.dcc         || {};
+  const geoFlags = scoring.geo_signals?.active_flags || {};
+
+  // ── STATUS CHECKS ────────────────────────────────────────────
+  const totalScored  = Object.keys(scores).length;
+  const garchOk      = totalScored > 100;
+  const regimeOk     = snap.regime !== undefined && snap.regime !== 'SIDEWAYS'
+                     || Object.keys(regimePeriods||{}).length > 100;
+  // Regime: use scoring result presence as proxy
+  const regimePeriods= {}; // not exposed in snap — use regime string instead
+  const regimeOk2    = snap.regime && snap.regime !== undefined;
+  const finbertCount = Object.values(scores).filter(s => s?.layers?.news?.source === 'finbert').length;
+  const finbertOk    = finbertCount > 0;
+  const newsCount    = Object.values(scores).filter(s => (s?.layers?.news?.articles||0) > 0).length;
+  const dccOk        = (dcc.symbols?.length || 0) > 0;
+  const mcOk         = Object.keys(mc).filter(k => k !== '_portfolio').length > 0;
+  const blOk         = !!bl.top_pick;
+  const fiiOk        = snap.fii?.fii_net !== undefined && snap.fii?.fii_net !== null;
+  const usOk         = !!snap.usPrices?.NET;
+
+  const STATUS = [
+    { label:'PRICE HISTORY',
+      ok: garchOk,
+      detail: garchOk
+        ? `${totalScored} instruments loaded | Top: ${scoring.top5?.slice(0,3).join(', ')||'?'}`
+        : 'No price history — run radar-data-fetcher.js on Desktop' },
+    { label:'GARCH SCORING',
+      ok: garchOk,
+      detail: garchOk
+        ? `6-layer model running | Regime: ${snap.regime} | Source: ${Object.values(scores).find(s=>s?.layers?.quant?.source)?.layers?.quant?.source||'?'}`
+        : 'Needs price history in B2' },
+    { label:'REGIME PERIODS',
+      ok: regimeOk2,
+      detail: regimeOk2
+        ? `Current: ${snap.regime} | 18yr Nifty 50 + SP500 regime classification`
+        : 'Regime detection not running' },
+    { label:'FINBERT NEWS',
+      ok: finbertOk,
+      detail: finbertOk
+        ? `ProsusAI/finbert active | ${finbertCount} stocks scored at 85% accuracy`
+        : `Keyword fallback (62%) | ${newsCount} stocks with news | Add HF_TOKEN to Render env` },
+    { label:'DCC CORRELATIONS',
+      ok: dccOk,
+      detail: dccOk
+        ? `${dcc.symbols?.length} stocks | NET-CEG: ${dcc.correlation?.NET?.CEG?.toFixed(2)||'?'} | NET-GLNG: ${dcc.correlation?.NET?.GLNG?.toFixed(2)||'?'} | Source: ${dcc.source||'?'}`
+        : 'Not computed — run ⬡ COMPUTE CORRELATION MATRIX on Desktop' },
+    { label:'MONTE CARLO',
+      ok: mcOk,
+      detail: mcOk
+        ? `NET: ${mc.NET?.win_probability}% | CEG: ${mc.CEG?.win_probability}% | GLNG: ${mc.GLNG?.win_probability}% | Cholesky: ${mc._portfolio?.cholesky_used?'✅':'❌'}`
+        : 'Not computed this cycle' },
+    { label:'BLACK-LITTERMAN',
+      ok: blOk,
+      detail: blOk
+        ? `Top pick: ${bl.top_pick} | Sharpe: ${bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} | Exp return: ${bl.portfolio_metrics?.expected_return?.toFixed(1)}%`
+        : 'Not computed this cycle' },
+    { label:'NEWS COVERAGE',
+      ok: newsCount > 50,
+      detail: `${newsCount}/${totalScored} stocks with active news | Loop running 24/7` },
+    { label:'FII DATA',
+      ok: fiiOk,
+      detail: fiiOk
+        ? `FII: ${snap.fii.fii_net >= 0 ? '+' : ''}₹${Math.round(snap.fii.fii_net)}Cr | DII: ${snap.fii.dii_net >= 0 ? '+' : ''}₹${Math.round(snap.fii.dii_net||0)}Cr`
+        : 'FII data not loading' },
+    { label:'US PRICES',
+      ok: usOk,
+      detail: usOk
+        ? `NET: $${snap.usPrices.NET?.toFixed(2)} | CEG: $${snap.usPrices.CEG?.toFixed(2)} | GLNG: $${snap.usPrices.GLNG?.toFixed(2)}`
+        : 'US prices not loading' },
+  ];
+
+  const okCount    = STATUS.filter(s => s.ok).length;
+  const healthPct  = Math.round(okCount / STATUS.length * 100);
+  const healthColor= healthPct >= 80 ? '#00ffcc' : healthPct >= 50 ? '#ffcc00' : '#ff2244';
+
+  const trigger = async (type) => {
+    setBusy(true); setMsg('Running...');
     try {
-      const r = await fetch(`${API}/api/refresh${type==='recalibrate'?'?type=recalibrate':''}`);
-      const d = await r.json();
-      setMsg(d.ok || d.message ? '✅ Done' : '⚠ Check logs');
+      const url = type === 'recalibrate' ? `${API}/api/refresh?type=recalibrate` : `${API}/api/refresh`;
+      const r   = await fetch(url);
+      const d   = await r.json();
+      setMsg(d.ok !== false ? '✅ Done — refresh page to see updates' : `❌ ${d.error||'Error'}`);
+      if (refresh) setTimeout(refresh, 2000);
     } catch(e) { setMsg('❌ ' + e.message); }
     setBusy(false);
   };
 
-  // Model health checks
-  const priceCount  = Object.keys(scores).length;
-  const garchOk     = priceCount > 100;
-  const finbertSrc  = Object.values(scores).find(s => s?.layers?.news?.source === 'finbert');
-  const finbertOk   = !!finbertSrc;
-  const dccOk       = dcc.symbols?.length > 0;
-  const mcOk        = Object.keys(mc).length > 0;
-  const blOk        = !!bl.top_pick;
-  const regimeOk    = snap.regime !== 'SIDEWAYS' ||
-                      Object.keys(scoring).length > 0;
-  const newsCount   = Object.values(scores).filter(s => s?.layers?.news?.articles > 0).length;
-  const totalScored = Object.keys(scores).length;
-
-  const STATUS = [
-    {
-      label: 'PRICE HISTORY',
-      ok:    garchOk,
-      detail: garchOk ? `${priceCount} instruments loaded` : 'No price history — run local_calibrate.js',
-      action: null,
-    },
-    {
-      label: 'GARCH SCORING',
-      ok:    garchOk,
-      detail: garchOk
-        ? `Running on ${priceCount} stocks | Top: ${analysis.scores?.top5?.slice(0,3).join(', ')}`
-        : 'Needs price history first',
-      action: null,
-    },
-    {
-      label: 'REGIME PERIODS',
-      ok:    regimeOk,
-      detail: regimeOk
-        ? `Current: ${snap.regime} | 18yr Nifty + SP500 regime periods active`
-        : `Regime: ${snap.regime} — verify Nifty/SP500 history in B2`,
-      action: null,
-    },
-    {
-      label: 'FINBERT NEWS',
-      ok:    finbertOk,
-      detail: finbertOk
-        ? `ProsusAI/finbert active — 85% accuracy | ${newsCount} stocks scored`
-        : `Keyword fallback (62% accuracy) — add HF_TOKEN to Render env vars | ${newsCount} stocks scored`,
-      action: null,
-    },
-    {
-      label: 'DCC CORRELATIONS',
-      ok:    dccOk,
-      detail: dccOk
-        ? `${dcc.symbols?.length} stocks | NET-CEG: ${dcc.correlation?.NET?.CEG?.toFixed(2)||'?'} | NET-GLNG: ${dcc.correlation?.NET?.GLNG?.toFixed(2)||'?'}`
-        : 'Not computed — needs 30+ bars per stock',
-      action: null,
-    },
-    {
-      label: 'MONTE CARLO',
-      ok:    mcOk,
-      detail: mcOk
-        ? `NET: ${mc.NET?.win_probability}% win | CEG: ${mc.CEG?.win_probability}% win | GLNG: ${mc.GLNG?.win_probability}% win`
-        : 'Not computed — needs DCC first',
-      action: null,
-    },
-    {
-      label: 'BLACK-LITTERMAN',
-      ok:    blOk,
-      detail: blOk
-        ? `Top pick: ${bl.top_pick} | Sharpe: ${bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} | Exp: ${bl.portfolio_metrics?.expected_return?.toFixed(1)}%`
-        : `Not computed yet | BL needs DCC matrix`,
-      action: null,
-    },
-    {
-      label: 'NEWS COVERAGE',
-      ok:    newsCount > 50,
-      detail: `${newsCount} stocks with active news | Loop running 24/7`,
-      action: null,
-    },
-    {
-      label: 'FII DATA',
-      ok:    !!snap.fii?.fii_net,
-      detail: snap.fii?.fii_net != null
-        ? `FII: ${snap.fii.fii_net >= 0 ? '+' : ''}₹${Math.round(snap.fii.fii_net)}Cr`
-        : 'FII data not loading — NSE API issue',
-      action: null,
-    },
-    {
-      label: 'US PRICES',
-      ok:    !!snap.usPrices?.NET,
-      detail: snap.usPrices?.NET
-        ? `NET: $${snap.usPrices.NET?.toFixed(2)} | CEG: $${snap.usPrices.CEG?.toFixed(2)} | GLNG: $${snap.usPrices.GLNG?.toFixed(2)}`
-        : 'US prices not loading',
-      action: null,
-    },
-  ];
-
-  const allOk    = STATUS.filter(s=>s.ok).length;
-  const allTotal = STATUS.length;
-  const healthPct= Math.round(allOk/allTotal*100);
-  const healthColor = healthPct>=80?'#00ffcc':healthPct>=50?'#ffcc00':'#ff2244';
-
   return (
-    <div style={{ padding:'0 4px' }}>
+    <div style={{ padding:'0 4px', overflowY:'auto', paddingBottom:90 }}>
 
-      {/* System Health Score */}
+      {/* Health Score */}
       <Panel glow={healthColor}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
             <Label color={healthColor}>SYSTEM HEALTH</Label>
-            <div style={{ fontSize:32, fontWeight:700, color:healthColor, fontFamily:'Orbitron,monospace',
-              textShadow:`0 0 20px ${healthColor}` }}>
+            <div style={{ fontSize:36, fontWeight:700, color:healthColor,
+              fontFamily:'Orbitron,monospace', textShadow:`0 0 20px ${healthColor}` }}>
               {healthPct}%
             </div>
             <div style={{ fontSize:9, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
-              {allOk}/{allTotal} systems operational
+              {okCount}/{STATUS.length} systems operational
             </div>
           </div>
           <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace', marginBottom:4 }}>
-              Last refresh: {ts ? new Date(ts).toLocaleTimeString() : '--'}
+            <div style={{ fontSize:9, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+              {snap.regime || '--'} regime
             </div>
             <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
-              Regime: <span style={{ color:healthColor }}>{snap.regime||'--'}</span>
+              {ts ? new Date(ts).toLocaleTimeString() : '--'}
+            </div>
+            <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
+              v2 backend
             </div>
           </div>
         </div>
       </Panel>
 
-      {/* Status Grid */}
+      {/* Model Status */}
       <Panel glow="#00b4ff">
         <Label color="#00b4ff">MODEL STATUS</Label>
         {STATUS.map((s, i) => (
-          <div key={i} style={{
-            display:'flex', alignItems:'flex-start', gap:10, padding:'8px 0',
-            borderBottom: i<STATUS.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-          }}>
-            {/* Status indicator */}
-            <div style={{
-              width:8, height:8, borderRadius:'50%', marginTop:4, flexShrink:0,
+          <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10,
+            padding:'8px 0', borderBottom: i < STATUS.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+            <div style={{ width:8, height:8, borderRadius:'50%', marginTop:4, flexShrink:0,
               background: s.ok ? '#00ffcc' : '#ff2244',
-              boxShadow: `0 0 8px ${s.ok ? '#00ffcc' : '#ff2244'}`,
-            }}/>
+              boxShadow: `0 0 8px ${s.ok ? '#00ffcc' : '#ff2244'}` }}/>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:9, fontFamily:'Orbitron,monospace', letterSpacing:1,
-                color: s.ok ? '#d0e8ff' : '#ff6688', marginBottom:3 }}>
-                {s.label}
-              </div>
+                color: s.ok ? '#d0e8ff' : '#ff6688', marginBottom:3 }}>{s.label}</div>
               <div style={{ fontSize:8, fontFamily:'JetBrains Mono,monospace',
-                color: s.ok ? '#506070' : '#ff444488', lineHeight:1.5 }}>
-                {s.detail}
-              </div>
+                color: s.ok ? '#506070' : '#ff444488', lineHeight:1.5 }}>{s.detail}</div>
             </div>
           </div>
         ))}
       </Panel>
 
-      {/* BL Cash Deployment */}
-      {(blOk || bl.optimal_weights) && (
-        <Panel glow="#7b2fff">
-          <Label color="#7b2fff">BLACK-LITTERMAN — OPTIMAL WEIGHTS</Label>
-          {Object.entries(bl.optimal_weights||{}).slice(0,8).map(([sym, wt], i) => (
-            <div key={sym} style={{ display:'flex', justifyContent:'space-between',
-              padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
-                {sym} {['NET','CEG','GLNG'].includes(sym) ? '★' : ''}
-              </div>
-              <div style={{ fontSize:9, color:'#7b2fff', fontFamily:'JetBrains Mono,monospace', fontWeight:700 }}>
-                {wt}%
-              </div>
-            </div>
-          ))}
-          {false && bl.cash_deployment?.recommendations?.slice(0,5).map((r,i) => (
-            <div key={i} style={{ display:'flex', justifyContent:'space-between',
-              padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
-                {r.symbol} {r.is_holding ? '★' : ''}
-              </div>
-              <div style={{ textAlign:'right' }}>
-                <div style={{ fontSize:9, color:'#7b2fff', fontFamily:'JetBrains Mono,monospace' }}>
-                  {r.weight}% weight
-                </div>
-                <div style={{ fontSize:8, color:'#3a5070', fontFamily:'JetBrains Mono,monospace' }}>
-                  Exp: {r.exp_return>=0?'+':''}{r.exp_return}% | σ {r.sigma}%
-                </div>
-              </div>
-            </div>
-          ))}
-          <div style={{ marginTop:8, fontSize:8, color:'#3a5070',
-            fontFamily:'JetBrains Mono,monospace' }}>
-            Portfolio Sharpe: {bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} |
-            Exp return: {bl.portfolio_metrics?.expected_return?.toFixed(1)}%
-          </div>
-        </Panel>
-      )}
-
       {/* Active Geo Flags */}
       {Object.keys(geoFlags).length > 0 && (
         <Panel glow="#ff8844">
-          <Label color="#ff8844">ACTIVE GEO FLAGS</Label>
+          <Label color="#ff8844">🚨 ACTIVE GEO FLAGS</Label>
           {Object.entries(geoFlags).map(([flag, data]) => (
             <div key={flag} style={{ display:'flex', justifyContent:'space-between',
               padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
               <div>
-                <div style={{ fontSize:9, color:'#ff8844',
-                  fontFamily:'Orbitron,monospace', letterSpacing:1 }}>
-                  🚨 {flag.replace(/_/g,' ')}
+                <div style={{ fontSize:9, color:'#ff8844', fontFamily:'Orbitron,monospace', letterSpacing:1 }}>
+                  {flag.replace(/_/g,' ')}
                 </div>
-                <div style={{ fontSize:8, color:'#506070',
-                  fontFamily:'JetBrains Mono,monospace' }}>{data.note}</div>
-              </div>
-              <div style={{ fontSize:8, color:'#ffcc00',
-                fontFamily:'JetBrains Mono,monospace', textAlign:'right' }}>
-                {data.count} articles
+                <div style={{ fontSize:8, color:'#506070', fontFamily:'JetBrains Mono,monospace' }}>
+                  {data.note} · {data.count} articles
+                </div>
               </div>
             </div>
           ))}
         </Panel>
       )}
 
-      {/* Raw Data Debug */}
-      <Panel glow="#1a3050">
-        <Label color="#1a3050">RAW DATA DEBUG</Label>
-        <div style={{ fontSize:7, fontFamily:'JetBrains Mono,monospace', color:'#3a5070', lineHeight:1.8 }}>
-          <div>snap.regime: <span style={{color:'#00b4ff'}}>{snap.regime||'undefined'}</span></div>
-          <div>snap.usPrices.NET: <span style={{color:'#00b4ff'}}>{snap.usPrices?.NET||'undefined'}</span></div>
-          <div>snap.fii.fii_net: <span style={{color:'#00b4ff'}}>{snap.fii?.fii_net||'undefined'}</span></div>
-          <div>scoring keys: <span style={{color:'#00b4ff'}}>{Object.keys(scoring).join(', ')||'empty'}</span></div>
-          <div>scores count: <span style={{color:'#00b4ff'}}>{Object.keys(scores).length}</span></div>
-          <div>mc keys: <span style={{color:'#00b4ff'}}>{Object.keys(mc).join(', ')||'empty'}</span></div>
-          <div>bl.top_pick: <span style={{color:'#00b4ff'}}>{bl.top_pick||'null'}</span></div>
-          <div>dcc.symbols count: <span style={{color:'#00b4ff'}}>{dcc.symbols?.length||0}</span></div>
-          <div>analysis keys: <span style={{color:'#00b4ff'}}>{Object.keys(analysis).join(', ')||'empty'}</span></div>
-        </div>
-      </Panel>
+      {/* BL Optimal Weights */}
+      {blOk && (
+        <Panel glow="#7b2fff">
+          <Label color="#7b2fff">BLACK-LITTERMAN — OPTIMAL WEIGHTS</Label>
+          <div style={{ marginBottom:6, fontSize:8, color:'#3a5070',
+            fontFamily:'JetBrains Mono,monospace' }}>
+            Sharpe: {bl.portfolio_metrics?.sharpe_ratio?.toFixed(2)} |
+            Exp return: {bl.portfolio_metrics?.expected_return?.toFixed(1)}% |
+            Vol: {bl.portfolio_metrics?.volatility?.toFixed(1)}%
+          </div>
+          {Object.entries(bl.optimal_weights||{}).sort(([,a],[,b])=>b-a).slice(0,8).map(([sym,wt]) => (
+            <div key={sym} style={{ display:'flex', justifyContent:'space-between',
+              padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ fontSize:9, color:'#d0e8ff', fontFamily:'JetBrains Mono,monospace' }}>
+                {sym} {['NET','CEG','GLNG'].includes(sym) ? '★' : ''}
+              </span>
+              <div style={{ textAlign:'right' }}>
+                <span style={{ fontSize:9, color:'#7b2fff', fontWeight:700,
+                  fontFamily:'JetBrains Mono,monospace' }}>{wt}%</span>
+                {bl.recommendations?.find(r=>r.symbol===sym)?.kelly_fraction > 0 && (
+                  <span style={{ fontSize:7, color:'#ffcc00', marginLeft:8,
+                    fontFamily:'JetBrains Mono,monospace' }}>
+                    Kelly {(bl.recommendations.find(r=>r.symbol===sym).kelly_fraction*100).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+          {bl.top_pick && (
+            <div style={{ marginTop:8, padding:'6px 10px', borderRadius:8,
+              background:'rgba(123,47,255,0.1)', fontSize:9,
+              fontFamily:'JetBrains Mono,monospace', color:'#7b2fff' }}>
+              ▶ Top pick: {bl.top_pick}
+            </div>
+          )}
+        </Panel>
+      )}
 
       {/* Controls */}
       <Panel glow="#3a5070">
         <Label color="#3a5070">CONTROLS</Label>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           {[
-            { label:'↻ REFRESH', action:()=>trigger('morning'), color:'#00b4ff' },
-            { label:'⚡ RECALIBRATE', action:()=>trigger('recalibrate'), color:'#ffcc00' },
+            { label:'↻ REFRESH',      color:'#00b4ff', fn:()=>trigger('morning'),     tip:'Fetch prices + run all models' },
+            { label:'⚙ RECALIBRATE',  color:'#ffcc00', fn:()=>trigger('recalibrate'), tip:'Refit GARCH (mobile-safe, no price fetch)' },
           ].map(btn => (
-            <button key={btn.label} onClick={btn.action} disabled={busy} style={{
-              padding:'8px 14px', borderRadius:8, border:`1px solid ${btn.color}44`,
-              background:`${btn.color}11`, color:btn.color,
-              fontFamily:'Orbitron,monospace', fontSize:8, letterSpacing:1,
-              cursor:busy?'not-allowed':'pointer', opacity:busy?0.5:1,
-            }}>{btn.label}</button>
-          ))}
-        </div>
-        {msg && <div style={{ marginTop:8, fontSize:9, fontFamily:'JetBrains Mono,monospace',
-          color:msg.includes('✅')?'#00ffcc':'#ff6688' }}>{msg}</div>}
-      </Panel>
-
-      {/* Parked Questions */}
-      {PARKED.questions.length > 0 && (
-        <Panel glow="#3a5070">
-          <Label color="#3a5070">PARKED QUESTIONS ({PARKED.questions.length})</Label>
-          {PARKED.questions.slice(-5).map((q,i) => (
-            <div key={i} style={{ fontSize:8, color:'#3a5070',
-              fontFamily:'JetBrains Mono,monospace', padding:'3px 0',
-              borderBottom:'1px solid rgba(255,255,255,0.03)' }}>
-              📌 {q.symbol}: {q.question}
+            <div key={btn.label}>
+              <button onClick={btn.fn} disabled={busy} style={{
+                padding:'8px 14px', borderRadius:8, border:`1px solid ${btn.color}44`,
+                background:`${btn.color}11`, color:btn.color,
+                fontFamily:'Orbitron,monospace', fontSize:8, letterSpacing:1,
+                cursor:busy?'not-allowed':'pointer', opacity:busy?0.5:1, display:'block',
+              }}>{btn.label}</button>
+              <div style={{ fontSize:6, color:'#3a5070', marginTop:2,
+                fontFamily:'JetBrains Mono,monospace' }}>{btn.tip}</div>
             </div>
           ))}
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-
-// ── BOTTOM NAV ────────────────────────────────────────────────
-function Nav({ tab, setTab }) {
-  const tabs = [
-    {id:'dashboard',     icon:'◈', label:'RADAR'},
-    {id:'opportunities', icon:'◎', label:'PICKS'},
-    {id:'portfolio',     icon:'◇', label:'PORT'},
-    {id:'settings',      icon:'⊙', label:'STATUS'},
-  ];
-  return (
-    <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
-      width:'100%', maxWidth:480, zIndex:200,
-      background:'rgba(1,3,10,0.92)', backdropFilter:'blur(30px)',
-      borderTop:'1px solid rgba(100,180,255,0.06)',
-      display:'flex', justifyContent:'space-around',
-      padding:'10px 0 max(12px,env(safe-area-inset-bottom))' }}>
-      {tabs.map(t => {
-        const active = tab===t.id;
-        return (
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ display:'flex', flexDirection:'column',
-            alignItems:'center', gap:3, background:'none', border:'none', padding:'4px 16px', borderRadius:10 }}>
-            <span style={{ fontSize:18, lineHeight:1,
-              color:active?'#00ffcc':'#3a5070',
-              textShadow:active?'0 0 15px #00ffcc':'none',
-              transform:active?'scale(1.2)':'scale(1)',
-              transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)' }}>{t.icon}</span>
-            <span style={{ fontSize:7, fontFamily:'Orbitron, monospace', letterSpacing:2, fontWeight:700,
-              color:active?'#00ffcc':'#3a5070', transition:'color 0.2s' }}>{t.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── MAIN APP ──────────────────────────────────────────────────
-export default function App() {
-  const [tab,        setTab]        = useState('dashboard');
-  const { data, loading, error, ts, refresh } = useData();
-
-  // Intro: show once per session, but ONLY after data has loaded
-  const [introState, setIntroState] = useState('waiting'); // waiting | showing | done
-
-  useEffect(() => {
-    // Once data arrives, decide whether to show intro
-    if (!loading && introState === 'waiting') {
-      const seen = sessionStorage.getItem('intro-seen-v2');
-      if (seen) {
-        setIntroState('done');
-      } else {
-        setIntroState('showing');
-      }
-    }
-  }, [loading, data]);
-
-  const handleIntroComplete = () => {
-    sessionStorage.setItem('intro-seen-v2', '1');
-    setIntroState('done');
-  };
-
-  // While waiting for data — show a minimal silent loader
-  if (loading && !data) {
-    return (
-      <div style={{ minHeight:'100vh', background:'#01030a', display:'flex',
-        alignItems:'center', justifyContent:'center' }}>
-        <div style={{ width:6, height:6, borderRadius:'50%', background:'#00ffcc',
-          boxShadow:'0 0 15px #00ffcc', animation:'pulse-ring 1.5s ease infinite' }}/>
-      </div>
-    );
-  }
-
-  // Show intro as full-screen takeover (data is ready underneath)
-  if (introState === 'showing') {
-    return (
-      <IntroAnimation
-        regime={data?.snap?.regime || 'BEAR'}
-        snap={data?.snap || {}}
-        onComplete={handleIntroComplete}/>
-    );
-  }
-
-  const regime = data?.snap?.regime || 'SIDEWAYS';
-  const dm = DIM[regime] || DIM.SIDEWAYS;
-
-  return (
-    <div style={{ minHeight:'100vh', background:'#01030a', color:'#d0e8ff',
-      maxWidth:480, margin:'0 auto', position:'relative',
-      animation:'world-explode-in 0.8s cubic-bezier(0.2,0,0,1) forwards',
-      backgroundImage:`radial-gradient(ellipse at 50% 0%, ${dm.color}08 0%, transparent 60%)` }}>
-
-      {/* ── REGIME WORLD BACKGROUND ── */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, opacity:0.35,
-        pointerEvents:'none', maxWidth:480, margin:'0 auto',
-        animation:'world-explode-in 0.9s cubic-bezier(0.2,0,0,1) forwards' }}>
-        <RegimeWorld regime={regime}/>
-      </div>
-
-      {/* Dim overlay so content is readable */}
-      <div style={{ position:'fixed', inset:0, zIndex:1, pointerEvents:'none',
-        background:'linear-gradient(180deg, rgba(1,3,10,0.7) 0%, rgba(1,3,10,0.5) 40%, rgba(1,3,10,0.8) 100%)' }}/>
-
-      {/* Header */}
-      <div style={{ position:'sticky', top:0, zIndex:100,
-        background:'rgba(1,3,10,0.92)', backdropFilter:'blur(30px)',
-        borderBottom:'1px solid rgba(100,180,255,0.06)',
-        padding:'12px 16px 10px',
-        display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ width:8, height:8, borderRadius:'50%', background:'#00ffcc',
-              boxShadow:'0 0 10px #00ffcc', flexShrink:0 }}/>
-            <span style={{ fontSize:14, fontWeight:700, letterSpacing:3,
-              fontFamily:'Orbitron, monospace', color:'#d0e8ff' }}>INVESTMENT RADAR</span>
-          </div>
-          <div style={{ fontSize:7, fontFamily:'JetBrains Mono, monospace',
-            color:'#3a5070', letterSpacing:2, marginTop:2, marginLeft:16 }}>
-            PRO · {data?.snap?.regime||'—'} · 5D INTELLIGENCE
-          </div>
         </div>
-        <button onClick={()=>refresh()} disabled={loading}
-          style={{ padding:'7px 14px', borderRadius:8,
-            border:'1px solid rgba(0,255,204,0.2)',
-            background:loading?'transparent':'rgba(0,255,204,0.08)',
-            color:loading?'#3a5070':'#00ffcc',
-            fontFamily:'JetBrains Mono, monospace', fontWeight:700, fontSize:10,
-            letterSpacing:1, boxShadow:loading?'none':'0 0 12px rgba(0,255,204,0.15)',
-            transition:'all 0.2s' }}>
-          {loading?'...':'↺'}
-        </button>
-      </div>
+        {msg && (
+          <div style={{ marginTop:10, fontSize:9, fontFamily:'JetBrains Mono,monospace',
+            color:msg.includes('✅')?'#00ffcc':'#ff6688' }}>{msg}</div>
+        )}
+      </Panel>
 
-      <div style={{ overflowY:'auto', paddingBottom:70, position:'relative', zIndex:2 }}>
-        {tab==='dashboard'     && <DashboardTab     data={data}/>}
-        {tab==='opportunities' && <OpportunitiesTab data={data}/>}
-        {tab==='portfolio'     && <PortfolioTab     data={data}/>}
-        {tab==='settings'      && <SettingsTab      data={data} refresh={refresh} ts={ts}/>}
-      </div>
-
-      <Nav tab={tab} setTab={setTab}/>
     </div>
   );
 }
+
+
